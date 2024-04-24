@@ -30,7 +30,6 @@ import ratpack.func.Action;
 import ratpack.handling.Context;
 import ratpack.handling.Handler;
 import ratpack.handling.RequestOutcome;
-import ratpack.handling.internal.ChainHandler;
 import ratpack.handling.internal.DefaultContext;
 import ratpack.handling.internal.DefaultRequestOutcome;
 import ratpack.http.Headers;
