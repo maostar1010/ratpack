@@ -167,6 +167,8 @@ public interface Context extends Registry {
   @NonBlocking
   void next(Registry registry);
 
+  void insert(Handler handler);
+
   /**
    * Inserts some handlers into the pipeline, then delegates to the first.
    * <p>
@@ -176,6 +178,8 @@ public interface Context extends Registry {
    */
   @NonBlocking
   void insert(Handler... handlers);
+
+  void insert(Registry registry, Handler handler);
 
   /**
    * Inserts some handlers into the pipeline to execute with the given registry, then delegates to the first.

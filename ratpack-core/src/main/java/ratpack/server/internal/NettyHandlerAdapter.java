@@ -35,7 +35,6 @@ import ratpack.exec.Execution;
 import ratpack.func.Action;
 import ratpack.handling.Handler;
 import ratpack.handling.Handlers;
-import ratpack.handling.internal.ChainHandler;
 import ratpack.handling.internal.DefaultContext;
 import ratpack.handling.internal.DescribingHandler;
 import ratpack.handling.internal.DescribingHandlers;
@@ -66,7 +65,7 @@ public class NettyHandlerAdapter extends ChannelInboundHandlerAdapter {
 
   private final static Logger LOGGER = LoggerFactory.getLogger(NettyHandlerAdapter.class);
 
-  private final Handler[] handlers;
+  private final Handler handler;
 
   private final DefaultContext.ApplicationConstants applicationConstants;
 
@@ -78,7 +77,7 @@ public class NettyHandlerAdapter extends ChannelInboundHandlerAdapter {
 
   public NettyHandlerAdapter(Registry serverRegistry, Handler handler) {
     this.serverConfig = serverRegistry.get(ServerConfig.class);
-    this.handlers = ChainHandler.unpack(handler);
+    this.handler = handler;
     this.serverRegistry = serverRegistry;
     this.applicationConstants = new DefaultContext.ApplicationConstants(
       this.serverRegistry,
@@ -244,7 +243,7 @@ public class NettyHandlerAdapter extends ChannelInboundHandlerAdapter {
       channel.eventLoop(),
       requestConstants,
       serverRegistry,
-      handlers,
+      handler,
       execution -> {
         if (!responseInitiated.get()) {
           unhandledRequest(ctx, execution, requestConstants, request, response, state.responseTransmitter);
