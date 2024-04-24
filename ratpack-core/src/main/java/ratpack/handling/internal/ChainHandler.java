@@ -26,7 +26,11 @@ public class ChainHandler implements Handler {
   private final Handler[] handlers;
 
   public ChainHandler(List<? extends Handler> handlers) {
-    this.handlers = handlers.toArray(new Handler[handlers.size()]);
+    if (handlers.size() < 2) {
+      throw new IllegalArgumentException("handlers size must be >= 2");
+    }
+
+    this.handlers = handlers.toArray(new Handler[0]);
   }
 
   public ChainHandler(Handler... handlers) {

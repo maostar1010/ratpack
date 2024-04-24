@@ -28,7 +28,6 @@ import ratpack.exec.ExecController;
 import ratpack.exec.Execution;
 import ratpack.exec.Promise;
 import ratpack.file.FileSystemBinding;
-import ratpack.server.internal.ResponseTransmitter;
 import ratpack.func.Action;
 import ratpack.func.Function;
 import ratpack.handling.*;
@@ -48,6 +47,7 @@ import ratpack.registry.Registry;
 import ratpack.render.NoSuchRendererException;
 import ratpack.render.internal.RenderController;
 import ratpack.server.ServerConfig;
+import ratpack.server.internal.ResponseTransmitter;
 import ratpack.util.Exceptions;
 import ratpack.util.Types;
 
@@ -62,7 +62,8 @@ import static ratpack.util.Exceptions.uncheck;
 
 public class DefaultContext implements Context {
 
-  private static final TypeToken<Parser<?>> PARSER_TYPE_TOKEN = Types.intern(new TypeToken<Parser<?>>() {});
+  private static final TypeToken<Parser<?>> PARSER_TYPE_TOKEN = Types.intern(new TypeToken<Parser<?>>() {
+  });
 
   private final static Logger LOGGER = LoggerFactory.getLogger(DefaultContext.class);
   private final RequestConstants requestConstants;
@@ -77,9 +78,8 @@ public class DefaultContext implements Context {
     return Execution.current().get(Context.TYPE);
   }
 
-  public static void start(EventLoop eventLoop, final RequestConstants requestConstants, Registry registry, Handler[] handlers, Action<? super Execution> onComplete) {
-    ChainIndex index = new ChainIndex(handlers, registry, true);
-    requestConstants.indexes.push(index);
+  public static void start(EventLoop eventLoop, final RequestConstants requestConstants, Registry registry, Handler handler, Action<? super Execution> onComplete) {
+    requestConstants.indexes.push(chainIndex(registry, handler));
 
     DefaultContext context = new DefaultContext(requestConstants);
     requestConstants.context = context;
@@ -103,6 +103,25 @@ public class DefaultContext implements Context {
         context.joinedRegistry = new ContextRegistry(context).join(requestConstants.execution);
         context.next();
       });
+  }
+
+  private static ChainIndex chainIndex(Registry registry, Handler[] handlers) {
+    if (handlers.length == 0) {
+      throw new IllegalArgumentException();
+    } else if (handlers.length == 1) {
+      return chainIndex(registry, handlers[0]);
+    } else {
+      return new MultiHandlerChainIndex(registry, handlers);
+    }
+  }
+
+  private static ChainIndex chainIndex(Registry registry, Handler handler) {
+    if (handler instanceof ChainHandler) {
+      Handler[] handlers = ((ChainHandler) handler).getHandlers();
+      return chainIndex(registry, handlers);
+    } else {
+      return new SingleHandlerChainIndex(registry, handler);
+    }
   }
 
   private Registry getCurrentRegistry() {
@@ -140,11 +159,11 @@ public class DefaultContext implements Context {
       if (index.hasNext()) {
         handler = index.next();
         if (handler.getClass().equals(ChainHandler.class)) {
-          requestConstants.indexes.push(new ChainIndex(((ChainHandler) handler).getHandlers(), getCurrentRegistry(), false));
+          requestConstants.indexes.push(chainIndex(getCurrentRegistry(), ((ChainHandler) handler).getHandlers()));
           index = requestConstants.indexes.peek();
           handler = null;
         }
-      } else if (index.first) {
+      } else if (requestConstants.indexes.size() == 1) {
         handler = requestConstants.applicationConstants.end;
       } else {
         requestConstants.indexes.pop();
@@ -170,21 +189,26 @@ public class DefaultContext implements Context {
     next();
   }
 
-  public void insert(Handler... handlers) {
-    if (handlers.length == 0) {
-      throw new IllegalArgumentException("handlers is zero length");
-    }
 
-    requestConstants.indexes.push(new ChainIndex(handlers, getCurrentRegistry(), false));
+  @Override
+  public void insert(Handler handler) {
+    requestConstants.indexes.push(chainIndex(getCurrentRegistry(), handler));
     next();
   }
 
-  public void insert(final Registry registry, final Handler... handlers) {
-    if (handlers.length == 0) {
-      throw new IllegalArgumentException("handlers is zero length");
-    }
+  public void insert(Handler... handlers) {
+    requestConstants.indexes.push(chainIndex(getCurrentRegistry(), handlers));
+    next();
+  }
 
-    requestConstants.indexes.push(new ChainIndex(handlers, getCurrentRegistry().join(registry), false));
+  @Override
+  public void insert(Registry registry, Handler handler) {
+    requestConstants.indexes.push(chainIndex(getCurrentRegistry().join(registry), handler));
+    next();
+  }
+
+  public void insert(Registry registry, Handler... handlers) {
+    requestConstants.indexes.push(chainIndex(getCurrentRegistry().join(registry), handlers));
     next();
   }
 
@@ -425,16 +449,21 @@ public class DefaultContext implements Context {
 
   }
 
-  private static class ChainIndex implements Iterator<Handler> {
-    final Handler[] handlers;
-    final boolean first;
+  private static abstract class ChainIndex implements Iterator<Handler> {
     Registry registry;
+
+    private ChainIndex(Registry registry) {
+      this.registry = registry;
+    }
+  }
+
+  private static class MultiHandlerChainIndex extends ChainIndex {
+    final Handler[] handlers;
     int i;
 
-    private ChainIndex(Handler[] handlers, Registry registry, boolean first) {
+    private MultiHandlerChainIndex(Registry registry, Handler[] handlers) {
+      super(registry);
       this.handlers = handlers;
-      this.registry = registry;
-      this.first = first;
     }
 
     @Override
@@ -444,6 +473,29 @@ public class DefaultContext implements Context {
 
     public Handler next() {
       return handlers[i++];
+    }
+  }
+
+  private static class SingleHandlerChainIndex extends ChainIndex {
+    Handler handler;
+
+    private SingleHandlerChainIndex(Registry registry, Handler handler) {
+      super(registry);
+      this.handler = handler;
+    }
+
+    @Override
+    public boolean hasNext() {
+      return handler != null;
+    }
+
+    public Handler next() {
+      Handler handler = this.handler;
+      if (handler == null) {
+        throw new NoSuchElementException();
+      }
+      this.handler = null;
+      return handler;
     }
   }
 

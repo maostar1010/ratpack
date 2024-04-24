@@ -30,7 +30,6 @@ import ratpack.func.Action;
 import ratpack.handling.Context;
 import ratpack.handling.Handler;
 import ratpack.handling.RequestOutcome;
-import ratpack.handling.internal.ChainHandler;
 import ratpack.handling.internal.DefaultContext;
 import ratpack.handling.internal.DefaultRequestOutcome;
 import ratpack.http.Headers;
@@ -153,7 +152,7 @@ public class DefaultHandlingResult implements HandlingResult {
         applicationConstants, request, null, responseTransmitter, null);
     Response response = new DefaultResponse(responseHeaders, registry.get(ByteBufAllocator.class), responseTransmitter, request::setIdleTimeout);
     requestConstants.response = response;
-    DefaultContext.start(execController.getEventLoopGroup().next(), requestConstants, effectiveRegistry, ChainHandler.unpack(handler), Action.noop());
+    DefaultContext.start(execController.getEventLoopGroup().next(), requestConstants, effectiveRegistry, handler, Action.noop());
 
     try {
       if (!latch.await(timeout, TimeUnit.SECONDS)) {

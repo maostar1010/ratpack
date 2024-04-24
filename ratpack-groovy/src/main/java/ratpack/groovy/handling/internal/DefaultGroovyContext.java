@@ -103,6 +103,16 @@ public class DefaultGroovyContext implements GroovyContext {
   }
 
   @Override
+  public void insert(Handler handler) {
+    delegate.insert(handler);
+  }
+
+  @Override
+  public void insert(Registry registry, Handler handler) {
+    delegate.insert(registry, handler);
+  }
+
+  @Override
   @NonBlocking
   public void insert(Handler... handlers) {
     delegate.insert(handlers);
