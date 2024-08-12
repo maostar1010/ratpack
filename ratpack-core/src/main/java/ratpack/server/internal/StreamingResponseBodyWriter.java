@@ -23,6 +23,11 @@ import io.netty.handler.codec.http.DefaultHttpContent;
 import io.netty.handler.codec.http.LastHttpContent;
 import org.reactivestreams.Publisher;
 import org.reactivestreams.Subscription;
+import ratpack.exec.internal.Continuation;
+import ratpack.exec.internal.DefaultExecution;
+import ratpack.func.Action;
+
+import javax.annotation.Nullable;
 
 class StreamingResponseBodyWriter implements ResponseBodyWriter, ResponseWritingListener {
 
@@ -32,25 +37,45 @@ class StreamingResponseBodyWriter implements ResponseBodyWriter, ResponseWriting
   private Subscription subscription;
   private ChannelPromise channelPromise;
 
+  @Nullable
+  private Continuation continuation;
+
   public StreamingResponseBodyWriter(Publisher<? extends ByteBuf> publisher) {
     this.publisher = publisher;
   }
 
   @Override
+  public void dispose() {
+    done = true;
+  }
+
+  @Override
   public void onClosed() {
-    if (!done) {
-      done = true;
-      if (subscription != null) {
-        subscription.cancel();
+    exec(() -> {
+      if (!done) {
+        done = true;
+        if (subscription != null) {
+          subscription.cancel();
+        }
+        if (channelPromise != null) {
+          channelPromise.setSuccess();
+        }
       }
-      channelPromise.setSuccess();
-    }
+    });
   }
 
   @Override
   public void onWritable() {
+    // Writability can change while emitting a single item.
+    // Only propagate the request if we had previously written without subsequently requesting.
+    if (continuation == null) {
+      return;
+    }
+
     if (!done && subscription != null) {
-      subscription.request(1);
+      exec(() -> {
+        subscription.request(1);
+      });
     }
   }
 
@@ -59,6 +84,16 @@ class StreamingResponseBodyWriter implements ResponseBodyWriter, ResponseWriting
     channelPromise = channel.newPromise();
     publisher.subscribe(new Subscriber(channel));
     return channelPromise;
+  }
+
+  private void exec(Runnable rest) {
+    if (continuation == null) {
+      rest.run();
+    } else {
+      Continuation continuation = this.continuation;
+      this.continuation = null;
+      continuation.resume(rest::run);
+    }
   }
 
   private class Subscriber implements org.reactivestreams.Subscriber<ByteBuf> {
@@ -81,9 +116,7 @@ class StreamingResponseBodyWriter implements ResponseBodyWriter, ResponseWriting
       }
 
       subscription = incomingSubscription;
-      if (channel.isWritable()) {
-        subscription.request(1);
-      }
+      requestOrDelimit();
     }
 
     @Override
@@ -102,29 +135,41 @@ class StreamingResponseBodyWriter implements ResponseBodyWriter, ResponseWriting
       }
 
       channel.writeAndFlush(new DefaultHttpContent(o.touch()), channel.voidPromise());
+      requestOrDelimit();
+    }
+
+    private void requestOrDelimit() {
       if (channel.isWritable()) {
         subscription.request(1);
+      } else {
+        DefaultExecution.require().delimit(Action.throwException(), continuation ->
+          StreamingResponseBodyWriter.this.continuation = continuation
+        );
       }
     }
 
     @Override
     public void onError(Throwable t) {
-      if (t == null) {
-        throw new NullPointerException("error is null");
-      }
-      if (!done) {
-        done = true;
-        channelPromise.setFailure(t);
-      }
+      exec(() -> {
+        if (t == null) {
+          throw new NullPointerException("error is null");
+        }
+        if (!done) {
+          done = true;
+          channelPromise.setFailure(t);
+        }
+      });
     }
 
     @Override
     public void onComplete() {
-      if (!done) {
-        done = true;
-        channel.write(LastHttpContent.EMPTY_LAST_CONTENT, channelPromise);
-        channel.flush();
-      }
+      exec(() -> {
+        if (!done) {
+          done = true;
+          channel.write(LastHttpContent.EMPTY_LAST_CONTENT, channelPromise);
+          channel.flush();
+        }
+      });
     }
   }
 }

@@ -19,12 +19,14 @@ package ratpack.http
 import com.google.common.base.Charsets
 import io.netty.buffer.ByteBuf
 import io.netty.buffer.Unpooled
+import io.netty.channel.Channel
 import io.netty.handler.codec.PrematureChannelClosureException
 import org.reactivestreams.Publisher
 import org.reactivestreams.Subscriber
 import org.reactivestreams.Subscription
 import ratpack.exec.ExecInterceptor
 import ratpack.exec.Execution
+import ratpack.exec.Promise
 import ratpack.func.Block
 import ratpack.http.client.HttpClient
 import ratpack.http.internal.DefaultResponse
@@ -51,7 +53,7 @@ class ResponseStreamingSpec extends RatpackGroovyDslSpec {
       all {
         request.maxContentLength = 12
         render stringChunks(
-            publish(["abc"] * 3)
+          publish(["abc"] * 3)
         )
       }
     }
@@ -69,12 +71,12 @@ class ResponseStreamingSpec extends RatpackGroovyDslSpec {
     handlers {
       all {
         render stringChunks(
-            publish(["abc"] * 3).gate { resumer ->
-              Thread.start {
-                sleep(2000)
-                resumer.run()
-              }
+          publish(["abc"] * 3).gate { resumer ->
+            Thread.start {
+              sleep(2000)
+              resumer.run()
             }
+          }
         )
       }
     }
@@ -89,7 +91,7 @@ class ResponseStreamingSpec extends RatpackGroovyDslSpec {
       all {
         request.maxContentLength = 100_000
         render stringChunks(
-            publish(["abc"] * 3)
+          publish(["abc"] * 3)
         )
       }
     }
@@ -223,7 +225,7 @@ class ResponseStreamingSpec extends RatpackGroovyDslSpec {
         }
         request.maxContentLength = 100_000
         render stringChunks(
-            publish(["abc"] * 3)
+          publish(["abc"] * 3)
         )
       }
     }
@@ -308,11 +310,11 @@ class ResponseStreamingSpec extends RatpackGroovyDslSpec {
     handlers {
       all { ctx ->
         (response as DefaultResponse)
-            .sendStream(request.bodyStream.map {
-              Unpooled.compositeBuffer(2)
-                  .addComponent(true, it)
-                  .addComponent(true, Unpooled.wrappedBuffer("\n".bytes))
-            }, false)
+          .sendStream(request.bodyStream.map {
+            Unpooled.compositeBuffer(2)
+              .addComponent(true, it)
+              .addComponent(true, Unpooled.wrappedBuffer("\n".bytes))
+          }, false)
       }
     }
 
@@ -354,7 +356,7 @@ class ResponseStreamingSpec extends RatpackGroovyDslSpec {
     def data = Unpooled.wrappedBuffer(array)
     def exec = new AtomicReference<Execution>()
     def execSuspended = new BlockingVariable<Boolean>()
-    def execSet = new BlockingVariable<Boolean>()
+    def execSet = new BlockingVariable<Boolean>(10)
     serverConfig {
       maxChunkSize(array.size())
     }
@@ -413,6 +415,151 @@ class ResponseStreamingSpec extends RatpackGroovyDslSpec {
     execSet.get()
 
     cleanup:
+    data?.release()
+    output?.close()
+    input?.close()
+  }
+
+  def "execution is delimited when consumer demand is exhausted"() {
+    when:
+    def array = new byte[1024 * 1024]
+    Arrays.fill(array, 1 as byte)
+    def data = Unpooled.wrappedBuffer(array)
+    def done = false
+    def doneData = Unpooled.wrappedBuffer("done".bytes)
+    def exec = new AtomicReference<Execution>()
+    def execSuspended = new BlockingVariable<Boolean>()
+    def execSet = new BlockingVariable<Boolean>()
+    def channel = new BlockingVariable<Channel>()
+    serverConfig {
+      maxChunkSize(array.size())
+    }
+    bindings {
+      bindInstance(ExecInterceptor, new ExecInterceptor() {
+        @Override
+        void intercept(Execution execution, ExecInterceptor.ExecType execType, Block executionSegment) throws Exception {
+          try {
+            executionSegment.execute()
+          } finally {
+            if (execution == exec.get() && execType == ExecInterceptor.ExecType.COMPUTE) {
+              execSuspended.set(true)
+            }
+          }
+        }
+      })
+    }
+    handlers {
+      all { ctx ->
+        exec.set(Execution.current())
+        channel.set(directChannelAccess.channel)
+        context.onClose {
+          execSet.set(Execution.current().is(exec.get()))
+        }
+        response.sendStream(Streams.flatYield { Promise.sync { done ? doneData.retainedSlice() : data.retainedSlice() } })
+      }
+    }
+
+    and:
+    def socket = socket()
+    def input = new BufferedReader(new InputStreamReader(socket.inputStream, StandardCharsets.UTF_8))
+    def output = new OutputStreamWriter(socket.outputStream, StandardCharsets.UTF_8)
+    output.with {
+      write("POST / HTTP/1.1\r\n")
+      write("\r\n")
+      flush()
+    }
+
+    then:
+    input.readLine() == "HTTP/1.1 200 OK"
+    input.readLine() == "transfer-encoding: chunked"
+    input.readLine() == ""
+    input.readLine()
+    input.readLine()
+
+    when:
+    execSuspended.get()
+    assert !channel.get().writable
+    done = true
+
+    then:
+    new PollingConditions().within(10) {
+      assert input.readLine() == "done"
+    }
+    input.close()
+
+    cleanup:
+    data?.release()
+    doneData?.release()
+    output?.close()
+    input?.close()
+  }
+
+  def "producer can error while waiting for demand"() {
+    when:
+    def array = new byte[1024 * 1024]
+    Arrays.fill(array, 1 as byte)
+    def data = Unpooled.wrappedBuffer(array)
+    def done = false
+    def exec = new AtomicReference<Execution>()
+    def execSuspended = new BlockingVariable<Boolean>()
+    def execSet = new BlockingVariable<Boolean>()
+    def channel = new BlockingVariable<Channel>()
+    serverConfig {
+      maxChunkSize(array.size())
+    }
+    bindings {
+      bindInstance(ExecInterceptor, new ExecInterceptor() {
+        @Override
+        void intercept(Execution execution, ExecInterceptor.ExecType execType, Block executionSegment) throws Exception {
+          try {
+            executionSegment.execute()
+          } finally {
+            if (execution == exec.get() && execType == ExecInterceptor.ExecType.COMPUTE) {
+              execSuspended.set(true)
+            }
+          }
+        }
+      })
+    }
+    handlers {
+      all { ctx ->
+        exec.set(Execution.current())
+        channel.set(directChannelAccess.channel)
+        context.onClose {
+          execSet.set(Execution.current().is(exec.get()))
+        }
+        response.sendStream(Streams.flatYield { Promise.sync { done ? { throw new Exception("!") }() : data.retainedSlice() } })
+      }
+    }
+
+    and:
+    def socket = socket()
+    def input = new BufferedReader(new InputStreamReader(socket.inputStream, StandardCharsets.UTF_8))
+    def output = new OutputStreamWriter(socket.outputStream, StandardCharsets.UTF_8)
+    output.with {
+      write("POST / HTTP/1.1\r\n")
+      write("\r\n")
+      flush()
+    }
+
+    then:
+    input.readLine() == "HTTP/1.1 200 OK"
+    input.readLine() == "transfer-encoding: chunked"
+    input.readLine() == ""
+
+    when:
+    execSuspended.get()
+    assert !channel.get().writable
+    done = true
+
+    then:
+    new PollingConditions().eventually {
+      assert input.readLine() == null
+      assert !channel.get().open
+    }
+
+    cleanup:
+    input.close()
     data?.release()
     output?.close()
     input?.close()
