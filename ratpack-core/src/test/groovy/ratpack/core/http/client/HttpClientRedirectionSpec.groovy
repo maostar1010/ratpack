@@ -182,11 +182,13 @@ class HttpClientRedirectionSpec extends BaseHttpClientSpec {
     }
 
     then:
-    text == "http://ratpack.io=10"
+    text == "${URLEncoder.encode("http://ratpack.io=10", "UTF-8")}"
 
     where:
     pooled << [true, false]
   }
+
+
 
   def "can follow a relative redirect get request"() {
     given:

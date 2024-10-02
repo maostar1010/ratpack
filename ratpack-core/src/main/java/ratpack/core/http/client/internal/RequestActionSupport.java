@@ -608,17 +608,17 @@ abstract class RequestActionSupport<T> implements Upstream<T> {
         return URI.create(requestUri.getScheme() + ":" + redirectLocation);
       } else {
 
-        String path = redirectLocationUri.getPath();
+        String path = redirectLocationUri.getRawPath();
         if (!path.startsWith("/")) { // absolute path
-          path = getParentPath(requestUri.getPath()) + path;
+          path = getParentPath(requestUri.getRawPath()) + path;
         }
         return new URI(
           requestUri.getScheme(),
-          requestUri.getUserInfo(),
+          requestUri.getRawUserInfo(),
           requestUri.getHost(),
           requestUri.getPort(),
           path,
-          redirectLocationUri.getQuery(),
+          redirectLocationUri.getRawQuery(),
           null
         );
       }
