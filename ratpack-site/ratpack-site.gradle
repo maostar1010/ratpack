@@ -44,18 +44,6 @@ apply plugin: 'io.freefair.jsass-base'
 
 repositories {
   mavenCentral()
-  jcenter()
-  exclusiveContent {
-    forRepository {
-      jcenter {
-        name "jcenterNoPom"
-        metadataSources { artifact() }
-      }
-    }
-    filter {
-      includeModule("io.ratpack", "ratpack-manual")
-    }
-  }
 }
 
 ext {

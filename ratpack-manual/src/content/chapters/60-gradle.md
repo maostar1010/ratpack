@@ -117,7 +117,6 @@ To use the `'shadow'` integration, you will need to include the dependency in yo
 buildscript {
   repositories {
     mavenCentral()
-    jcenter()
   }
   dependencies {
     classpath "io.ratpack:ratpack-gradle:@ratpack-version@"
@@ -233,7 +232,6 @@ Extra system properties or JVM options can be configured on this task…
 buildscript {
   repositories {
     mavenCentral()
-    jcenter()
   }
   dependencies {
     classpath "io.ratpack:ratpack-gradle:@ratpack-version@"
