@@ -612,15 +612,18 @@ abstract class RequestActionSupport<T> implements Upstream<T> {
         if (!path.startsWith("/")) { // absolute path
           path = getParentPath(requestUri.getRawPath()) + path;
         }
-        return new URI(
-          requestUri.getScheme(),
+
+        // By default, the URI encodes the path given to it. We don't want that here. But, we can let the URI
+        // do most of the work and then just append the raw path and query afterwords
+        String rawQuery = redirectLocationUri.getRawQuery() != null
+          ? "?" + redirectLocationUri.getRawQuery() : "";
+        return new URI(new URI(requestUri.getScheme(),
           requestUri.getRawUserInfo(),
           requestUri.getHost(),
           requestUri.getPort(),
-          path,
-          redirectLocationUri.getRawQuery(),
-          null
-        );
+          null,
+          null,
+          null) + path + rawQuery);
       }
     }
   }
