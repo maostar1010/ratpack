@@ -18,7 +18,6 @@ package ratpack.groovy.handling.internal;
 
 import com.google.common.reflect.TypeToken;
 import groovy.lang.Closure;
-import ratpack.api.NonBlocking;
 import ratpack.api.Nullable;
 import ratpack.exec.Execution;
 import ratpack.exec.Promise;
@@ -91,13 +90,11 @@ public class DefaultGroovyContext implements GroovyContext {
   }
 
   @Override
-  @NonBlocking
   public void next() {
     delegate.next();
   }
 
   @Override
-  @NonBlocking
   public void next(Registry registry) {
     delegate.next(registry);
   }
@@ -113,13 +110,11 @@ public class DefaultGroovyContext implements GroovyContext {
   }
 
   @Override
-  @NonBlocking
   public void insert(Handler... handlers) {
     delegate.insert(handlers);
   }
 
   @Override
-  @NonBlocking
   public void insert(Registry registry, Handler... handlers) {
     delegate.insert(registry, handlers);
   }
@@ -135,19 +130,16 @@ public class DefaultGroovyContext implements GroovyContext {
   }
 
   @Override
-  @NonBlocking
   public void error(Throwable throwable) throws NotInRegistryException {
     delegate.error(throwable);
   }
 
   @Override
-  @NonBlocking
   public void clientError(int statusCode) throws NotInRegistryException {
     delegate.clientError(statusCode);
   }
 
   @Override
-  @NonBlocking
   public void render(Object object) {
     delegate.render(object);
   }
@@ -163,7 +155,6 @@ public class DefaultGroovyContext implements GroovyContext {
   }
 
   @Override
-  @NonBlocking
   public void lastModified(Instant lastModified, Runnable runnable) {
     delegate.lastModified(lastModified, runnable);
   }

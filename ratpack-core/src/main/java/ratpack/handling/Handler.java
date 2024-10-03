@@ -115,6 +115,7 @@ import ratpack.api.NonBlocking;
  * @see ratpack.registry.Registry
  */
 @FunctionalInterface
+@NonBlocking
 public interface Handler {
 
   /**
@@ -123,7 +124,6 @@ public interface Handler {
    * @param ctx The context to handle
    * @throws Exception if anything goes wrong (exception will be implicitly passed to the context's {@link Context#error(Throwable)} method)
    */
-  @NonBlocking
   void handle(Context ctx) throws Exception;
 
 }

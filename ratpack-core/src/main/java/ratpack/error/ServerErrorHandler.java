@@ -24,11 +24,12 @@ import ratpack.util.Types;
 
 /**
  * An object that can deal with errors that occur during the processing of an exchange.
- *
+ * <p>
  * Typically retrieved from the exchange service.
  *
  * @see ratpack.handling.Context#error(Throwable)
  */
+@NonBlocking
 public interface ServerErrorHandler {
 
   /**
@@ -48,7 +49,6 @@ public interface ServerErrorHandler {
    * @param throwable The throwable that occurred
    * @throws Exception if something goes wrong handling the error
    */
-  @NonBlocking
   void error(Context context, Throwable throwable) throws Exception;
 
   /**
@@ -60,10 +60,8 @@ public interface ServerErrorHandler {
    * @param context The context being processed
    * @param exception The path encoding error that occurred
    * @throws Exception if something goes wrong handling the error
-   *
    * @since 1.5
    */
-  @NonBlocking
   default void error(Context context, InvalidPathEncodingException exception) throws Exception {
     context.clientError(400);
   }

@@ -26,6 +26,7 @@ import ratpack.registry.RegistrySpec;
  *
  * @see Execution#fork()
  */
+@NonBlocking
 public interface ExecStarter extends ExecSpec {
 
   /**
@@ -33,7 +34,6 @@ public interface ExecStarter extends ExecSpec {
    *
    * @param initialExecutionSegment the initial execution segment of the execution
    */
-  @NonBlocking
   void start(Action<? super Execution> initialExecutionSegment);
 
   /**
@@ -42,7 +42,6 @@ public interface ExecStarter extends ExecSpec {
    * @param operation the operation to execute
    * @since 1.4
    */
-  @NonBlocking
   default void start(Operation operation) {
     start(e -> operation.then());
   }

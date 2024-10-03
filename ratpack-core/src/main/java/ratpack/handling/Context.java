@@ -87,6 +87,7 @@ import java.util.Optional;
  * <li>A {@link Redirector}</li>
  * </ul>
  */
+@NonBlocking
 public interface Context extends Registry {
 
   /**
@@ -135,7 +136,6 @@ public interface Context extends Registry {
    * <p>
    * The request and response of this object should not be accessed after this method is called.
    */
-  @NonBlocking
   void next();
 
   /**
@@ -164,7 +164,6 @@ public interface Context extends Registry {
    *
    * @param registry The registry to make available for subsequent handlers.
    */
-  @NonBlocking
   void next(Registry registry);
 
   void insert(Handler handler);
@@ -176,7 +175,6 @@ public interface Context extends Registry {
    *
    * @param handlers The handlers to insert.
    */
-  @NonBlocking
   void insert(Handler... handlers);
 
   void insert(Registry registry, Handler handler);
@@ -191,7 +189,6 @@ public interface Context extends Registry {
    * @param handlers The handlers to insert
    * @param registry The registry for the inserted handlers
    */
-  @NonBlocking
   void insert(Registry registry, Handler... handlers);
 
   /**
@@ -241,7 +238,6 @@ public interface Context extends Registry {
    * @param action the specification of how to handle the request based on the request method
    * @throws Exception any thrown by action
    */
-  @NonBlocking
   void byMethod(Action<? super ByMethodSpec> action) throws Exception;
 
   /**
@@ -270,7 +266,6 @@ public interface Context extends Registry {
    *
    * @param throwable The exception that occurred
    */
-  @NonBlocking
   void error(Throwable throwable);
 
   /**
@@ -282,7 +277,6 @@ public interface Context extends Registry {
    * @param statusCode The 4xx range status code that indicates the error type
    * @throws NotInRegistryException if no {@link ClientErrorHandler} can be found in the service
    */
-  @NonBlocking
   void clientError(int statusCode) throws NotInRegistryException;
 
   /**
@@ -312,7 +306,6 @@ public interface Context extends Registry {
    * @param object The object-to-render
    * @throws NoSuchRendererException if no suitable renderer can be found
    */
-  @NonBlocking
   void render(Object object) throws NoSuchRendererException;
 
   /**
@@ -440,7 +433,6 @@ public interface Context extends Registry {
    * @param lastModified the effective last modified date of the response
    * @param serve the response sending action if the response needs to be sent
    */
-  @NonBlocking
   default void lastModified(Date lastModified, Runnable serve) {
     lastModified(lastModified.toInstant(), serve);
   }
@@ -458,7 +450,6 @@ public interface Context extends Registry {
    * @param serve the response sending action if the response needs to be sent
    * @since 1.4
    */
-  @NonBlocking
   void lastModified(Instant lastModified, Runnable serve);
 
   /**

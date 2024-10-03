@@ -31,11 +31,11 @@ import ratpack.api.NonBlocking;
  * <p>
  * It is recommended that all users migrate to the {@link ratpack.service.Service} type.
  *
- * @deprecated since 1.3
  * @see ratpack.service.Service
+ * @deprecated since 1.3
  */
-@SuppressWarnings("deprecation")
 @Deprecated
+@NonBlocking
 public interface Service {
 
   /**
@@ -53,8 +53,8 @@ public interface Service {
    * @param event meta information about the startup event
    * @throws Exception any
    */
-  @NonBlocking
-  default void onStart(StartEvent event) throws Exception { }
+  default void onStart(StartEvent event) throws Exception {
+  }
 
   /**
    * See {@link ratpack.service.Service#onStop(ratpack.service.StopEvent)}.
@@ -62,6 +62,6 @@ public interface Service {
    * @param event meta information about the stop event
    * @throws Exception any
    */
-  @NonBlocking
-  default void onStop(StopEvent event) throws Exception { }
+  default void onStop(StopEvent event) throws Exception {
+  }
 }
