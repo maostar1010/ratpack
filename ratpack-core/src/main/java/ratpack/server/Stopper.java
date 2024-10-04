@@ -23,6 +23,7 @@ import ratpack.api.NonBlocking;
  * <p>
  * An implementation of this is always available via the context registry.
  */
+@NonBlocking
 public interface Stopper {
 
   /**
@@ -30,7 +31,6 @@ public interface Stopper {
    * <p>
    * This method <i>may</i> return before the application is fully shut down.
    */
-  @NonBlocking
   void stop();
 
 }

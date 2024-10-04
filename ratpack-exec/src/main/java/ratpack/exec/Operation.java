@@ -67,6 +67,7 @@ import java.util.Optional;
  * }
  * }</pre>
  */
+@NonBlocking
 public interface Operation {
 
   static Operation of(Block block) {
@@ -173,10 +174,8 @@ public interface Operation {
     ).operation();
   }
 
-  @NonBlocking
   void then(Block block);
 
-  @NonBlocking
   default void then() {
     then(Block.noop());
   }

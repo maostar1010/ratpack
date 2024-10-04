@@ -35,6 +35,7 @@ import java.util.function.Supplier;
  * <p>
  * The headers and status are configured, before committing the response with one of the {@link #send} methods.
  */
+@NonBlocking
 public interface Response {
 
   /**
@@ -115,7 +116,6 @@ public interface Response {
   /**
    * Sends the response back to the client, with no body.
    */
-  @NonBlocking
   void send();
 
   Response contentTypeIfNotSet(Supplier<CharSequence> contentType);
@@ -127,7 +127,6 @@ public interface Response {
    *
    * @param text The text to render as a plain text response.
    */
-  @NonBlocking
   void send(String text);
 
   /**
@@ -138,10 +137,10 @@ public interface Response {
    * header will be "{@code application/json;charset=utf8}".
    * <p>
    * The value given for content type will override any previously set value for this header.
-   *  @param contentType The value of the content type header
+   *
+   * @param contentType The value of the content type header
    * @param body The string to render as the body of the response
    */
-  @NonBlocking
   void send(CharSequence contentType, String body);
 
   /**
@@ -150,15 +149,14 @@ public interface Response {
    *
    * @param bytes The response body
    */
-  @NonBlocking
   void send(byte[] bytes);
 
   /**
    * Sends the response, using the given content type and byte array as the response body.
-   *  @param contentType The value of the {@code Content-Type} header
+   *
+   * @param contentType The value of the {@code Content-Type} header
    * @param bytes The response body
    */
-  @NonBlocking
   void send(CharSequence contentType, byte[] bytes);
 
   /**
@@ -167,15 +165,14 @@ public interface Response {
    *
    * @param buffer The response body
    */
-  @NonBlocking
   void send(ByteBuf buffer);
 
   /**
    * Sends the response, using the given content type and bytes as the response body.
-   *  @param contentType The value of the {@code Content-Type} header
+   *
+   * @param contentType The value of the {@code Content-Type} header
    * @param buffer The response body
    */
-  @NonBlocking
   void send(CharSequence contentType, ByteBuf buffer);
 
   /**
@@ -205,7 +202,6 @@ public interface Response {
    *
    * @param file the response body
    */
-  @NonBlocking
   void sendFile(Path file);
 
   /**
@@ -241,7 +237,6 @@ public interface Response {
    *
    * @param stream a stream of byte bufs to be written to the response
    */
-  @NonBlocking
   void sendStream(Publisher<? extends ByteBuf> stream);
 
   /**

@@ -204,6 +204,7 @@ import ratpack.server.RatpackServer;
  *
  * @since 1.3
  */
+@NonBlocking
 public interface Service {
 
   /**
@@ -224,7 +225,6 @@ public interface Service {
    * @param event meta information about the startup event
    * @throws Exception any
    */
-  @NonBlocking
   default void onStart(StartEvent event) throws Exception { }
 
   /**
@@ -234,7 +234,6 @@ public interface Service {
    * @param event meta information about the stop event
    * @throws Exception any
    */
-  @NonBlocking
   default void onStop(StopEvent event) throws Exception { }
 
   /**
