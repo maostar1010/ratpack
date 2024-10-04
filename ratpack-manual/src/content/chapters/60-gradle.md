@@ -13,6 +13,7 @@ The first requirement is to apply the Gradle plugin to your Gradle project…
 ```language-groovy gradle
 buildscript {
   repositories {
+    gradlePluginPortal()
     mavenCentral()
   }
   dependencies {
@@ -32,6 +33,7 @@ Or for a Groovy based Ratpack project…
 ```language-groovy gradle
 buildscript {
   repositories {
+    gradlePluginPortal()
     mavenCentral()
   }
   dependencies {
@@ -58,6 +60,7 @@ To depend on a Ratpack extension library, simply add it as a regular compile dep
 ```language-groovy gradle
 buildscript {
   repositories {
+    gradlePluginPortal()
     mavenCentral()
   }
   dependencies {
@@ -116,8 +119,8 @@ To use the `'shadow'` integration, you will need to include the dependency in yo
 ```language-groovy gradle
 buildscript {
   repositories {
+    gradlePluginPortal()
     mavenCentral()
-    jcenter()
   }
   dependencies {
     classpath "io.ratpack:ratpack-gradle:@ratpack-version@"
@@ -151,6 +154,7 @@ You can choose not to use this dir, using `src/main/resources` instead, or chang
 ```language-groovy gradle
 buildscript {
   repositories {
+    gradlePluginPortal()
     mavenCentral()
   }
   dependencies {
@@ -194,6 +198,7 @@ If you wish to set extra system properties for development time execution, you c
 ```language-groovy gradle
 buildscript {
   repositories {
+    gradlePluginPortal()
     mavenCentral()
   }
   dependencies {
@@ -232,8 +237,8 @@ Extra system properties or JVM options can be configured on this task…
 ```language-groovy gradle
 buildscript {
   repositories {
+    gradlePluginPortal()
     mavenCentral()
-    jcenter()
   }
   dependencies {
     classpath "io.ratpack:ratpack-gradle:@ratpack-version@"
