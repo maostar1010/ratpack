@@ -153,6 +153,10 @@ class HttpClientRedirectionSpec extends BaseHttpClientSpec {
     pooled << [true, false]
   }
 
+  // NOTE: The redirect specification doesn't get into to detail surrounding URL encoding for the
+  // location header. Therefore, this test is not designed to be a definition of this behavior, since
+  // the specification is ambiguous. However, this will act as a regression test should further changes
+  // be done in this area.
   def "can follow a relative redirect get request with non-encoded query parameters"() {
     given:
     bindings {
