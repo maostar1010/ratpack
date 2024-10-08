@@ -153,6 +153,45 @@ class HttpClientRedirectionSpec extends BaseHttpClientSpec {
     pooled << [true, false]
   }
 
+  // NOTE: The redirect specification doesn't get into to detail surrounding URL encoding for the
+  // location header. Therefore, this test is not designed to be a definition of this behavior, since
+  // the specification is ambiguous. However, this will act as a regression test should further changes
+  // be done in this area.
+  def "can follow a relative redirect get request with non-encoded query parameters"() {
+    given:
+    bindings {
+      bindInstance(HttpClient, HttpClient.of { it.poolSize(pooled ? 8 : 0) })
+    }
+    otherApp {
+      get("foo") {
+        response.with {
+          status(301)
+          headers.set(HttpHeaderConstants.LOCATION, "/bar?loc=http://ratpack.io=10")
+          send()
+        }
+      }
+      get("bar") {
+        render request.queryParams["loc"]
+      }
+    }
+
+    when:
+    handlers {
+      get { HttpClient httpClient ->
+        httpClient.get(otherAppUrl("foo")) {
+        } then { ReceivedResponse response ->
+          render response.body.text
+        }
+      }
+    }
+
+    then:
+    text == "http://ratpack.io=10"
+
+    where:
+    pooled << [true, false]
+  }
+
   def "can follow a relative redirect get request with encoded query parameters"() {
     given:
     bindings {
@@ -187,6 +226,84 @@ class HttpClientRedirectionSpec extends BaseHttpClientSpec {
     where:
     pooled << [true, false]
   }
+
+  def "can follow a relative redirect get request with encoded path parameters"() {
+    given:
+    def valToken = ''
+    bindings {
+      bindInstance(HttpClient, HttpClient.of { it.poolSize(pooled ? 8 : 0) })
+    }
+    otherApp {
+      get("foo") {
+        response.with {
+          status(301)
+          headers.set(HttpHeaderConstants.LOCATION, "scan-data/bazel/nslowehwwgbgm/target/%2F%2F%3AHelloWorldTest")
+          send()
+        }
+      }
+      get("scan-data/bazel/nslowehwwgbgm/target/:val") {
+        render request.path
+        valToken = pathTokens.get("val")
+      }
+    }
+
+    when:
+    handlers {
+      get { HttpClient httpClient ->
+        httpClient.get(otherAppUrl("foo")) {
+        } then { ReceivedResponse response ->
+          render response.body.text
+        }
+      }
+    }
+
+    then:
+    text == "scan-data/bazel/nslowehwwgbgm/target/%2F%2F%3AHelloWorldTest"
+    valToken == '//:HelloWorldTest'
+
+    where:
+    pooled << [true, false]
+  }
+
+
+  def "can follow a relative redirect get request without encoded path parameters"() {
+    given:
+    def valToken = ''
+    bindings {
+      bindInstance(HttpClient, HttpClient.of { it.poolSize(pooled ? 8 : 0) })
+    }
+    otherApp {
+      get("foo") {
+        response.with {
+          status(301)
+          headers.set(HttpHeaderConstants.LOCATION, "scan-data/bazel/nslowehwwgbgm/target///:HelloWorldTest")
+          send()
+        }
+      }
+      get("scan-data/bazel/nslowehwwgbgm/target///:val") {
+        render request.path
+        valToken = pathTokens.get("val")
+      }
+    }
+
+    when:
+    handlers {
+      get { HttpClient httpClient ->
+        httpClient.get(otherAppUrl("foo")) {
+        } then { ReceivedResponse response ->
+          render response.body.text
+        }
+      }
+    }
+
+    then:
+    text == "scan-data/bazel/nslowehwwgbgm/target///:HelloWorldTest"
+    valToken == ':HelloWorldTest'
+
+    where:
+    pooled << [true, false]
+  }
+
 
   def "can follow a relative redirect get request"() {
     given:
