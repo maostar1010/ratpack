@@ -229,6 +229,7 @@ class HttpClientRedirectionSpec extends BaseHttpClientSpec {
 
   def "can follow a relative redirect get request with encoded path parameters"() {
     given:
+    def valToken = ''
     bindings {
       bindInstance(HttpClient, HttpClient.of { it.poolSize(pooled ? 8 : 0) })
     }
@@ -242,6 +243,7 @@ class HttpClientRedirectionSpec extends BaseHttpClientSpec {
       }
       get("scan-data/bazel/nslowehwwgbgm/target/:val") {
         render request.path
+        valToken = pathTokens.get("val")
       }
     }
 
@@ -257,6 +259,7 @@ class HttpClientRedirectionSpec extends BaseHttpClientSpec {
 
     then:
     text == "scan-data/bazel/nslowehwwgbgm/target/%2F%2F%3AHelloWorldTest"
+    valToken == '//:HelloWorldTest'
 
     where:
     pooled << [true, false]
@@ -265,6 +268,7 @@ class HttpClientRedirectionSpec extends BaseHttpClientSpec {
 
   def "can follow a relative redirect get request without encoded path parameters"() {
     given:
+    def valToken = ''
     bindings {
       bindInstance(HttpClient, HttpClient.of { it.poolSize(pooled ? 8 : 0) })
     }
@@ -278,6 +282,7 @@ class HttpClientRedirectionSpec extends BaseHttpClientSpec {
       }
       get("scan-data/bazel/nslowehwwgbgm/target///:val") {
         render request.path
+        valToken = pathTokens.get("val")
       }
     }
 
@@ -293,6 +298,7 @@ class HttpClientRedirectionSpec extends BaseHttpClientSpec {
 
     then:
     text == "scan-data/bazel/nslowehwwgbgm/target///:HelloWorldTest"
+    valToken == ':HelloWorldTest'
 
     where:
     pooled << [true, false]
