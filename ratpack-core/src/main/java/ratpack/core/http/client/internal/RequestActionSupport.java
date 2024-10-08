@@ -618,7 +618,7 @@ abstract class RequestActionSupport<T> implements Upstream<T> {
         String rawQuery = redirectLocationUri.getRawQuery() != null
           ? "?" + redirectLocationUri.getRawQuery() : "";
         return new URI(new URI(requestUri.getScheme(),
-          requestUri.getRawUserInfo(),
+          requestUri.getUserInfo(),
           requestUri.getHost(),
           requestUri.getPort(),
           null,
