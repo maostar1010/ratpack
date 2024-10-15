@@ -747,17 +747,7 @@ public interface Promise<T> {
    * @since 1.1
    */
   default Promise<T> nextOp(Function<? super T, ? extends Operation> function) {
-    return transform(up -> down ->
-      up.connect(
-        down.<T>onSuccess(value ->
-          function.apply(value)
-            .onError(down::error)
-            .then(() ->
-              down.success(value)
-            )
-        )
-      )
-    );
+    return nextOpIf(Predicate.TRUE, function);
   }
 
   /**
@@ -813,8 +803,23 @@ public interface Promise<T> {
         down.<T>onSuccess(value -> {
           if (predicate.apply(value)) {
             function.apply(value)
-              .onError(down::error)
-              .then(() -> down.success(value));
+              .promise()
+              .connect(new Downstream<Void>() {
+                @Override
+                public void success(Void ignored) {
+                  down.success(value);
+                }
+
+                @Override
+                public void error(Throwable throwable) {
+                  down.error(throwable);
+                }
+
+                @Override
+                public void complete() {
+                  down.success(value);
+                }
+              });
           } else {
             down.success(value);
           }

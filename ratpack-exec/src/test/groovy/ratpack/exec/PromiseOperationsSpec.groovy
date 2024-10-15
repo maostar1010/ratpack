@@ -23,6 +23,7 @@ import ratpack.test.internal.BaseRatpackSpec
 import spock.lang.AutoCleanup
 
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
 import static ratpack.func.Action.throwException
@@ -503,5 +504,33 @@ class PromiseOperationsSpec extends BaseRatpackSpec {
 
     then:
     v == 100
+  }
+
+  def "completed nextop propagates original value"() {
+    when:
+    def closed = new AtomicBoolean()
+    def onErrorCalled = new AtomicBoolean()
+    def value = null
+    exec {
+      Promise.value(1)
+      .nextOp {
+        Operation.of {
+          throw new RuntimeException("!")
+        }
+        .onError {
+          onErrorCalled.set(true)
+          // no rethrow
+        }
+      }
+      .close { closed.set(true) }
+      .then {
+        value = it
+      }
+    }
+
+    then:
+    value == 1
+    onErrorCalled.get()
+    closed.get()
   }
 }
