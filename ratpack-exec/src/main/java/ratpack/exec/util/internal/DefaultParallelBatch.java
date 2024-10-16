@@ -54,18 +54,18 @@ public class DefaultParallelBatch<T> implements ParallelBatch<T> {
 
   @Override
   public Promise<List<? extends ExecResult<T>>> yieldAll() {
-    List<Promise<T>> promises = Lists.newArrayList(this.promises);
-    if (promises.isEmpty()) {
-      return Promise.value(Collections.emptyList());
-    }
-
-    List<ExecResult<T>> results = Types.cast(promises);
-    AtomicInteger counter = new AtomicInteger(promises.size());
-
     return Promise.async(d -> {
+      List<Promise<T>> promises = Lists.newArrayList(this.promises);
+      if (promises.isEmpty()) {
+        d.success(Collections.emptyList());
+        return;
+      }
+
+      List<ExecResult<T>> results = Types.cast(promises);
+      AtomicInteger counter = new AtomicInteger(promises.size());
+
       for (int i = 0; i < promises.size(); ++i) {
         final int finalI = i;
-        //noinspection CodeBlock2Expr
         Execution.fork()
           .onStart(execInit)
           .onComplete(e -> {
@@ -74,9 +74,8 @@ public class DefaultParallelBatch<T> implements ParallelBatch<T> {
             }
           })
           .start(e ->
-            promises.get(finalI).result(t -> {
-              results.set(finalI, t);
-            })
+            promises.get(finalI)
+              .result(t -> results.set(finalI, t))
           );
       }
     });
@@ -85,13 +84,16 @@ public class DefaultParallelBatch<T> implements ParallelBatch<T> {
 
   @Override
   public Promise<List<T>> yield() {
-    List<Promise<T>> promises = Lists.newArrayList(this.promises);
-    if (promises.isEmpty()) {
-      return Promise.value(Collections.emptyList());
-    }
+    return Promise.flatten(() -> {
+      List<Promise<T>> promises = Lists.newArrayList(this.promises);
+      if (promises.isEmpty()) {
+        return Promise.value(Collections.emptyList());
+      }
 
-    List<T> results = Types.cast(promises);
-    return Promise.async(d -> forEach(promises, execInit, results::set).onError(d::error).then(() -> d.success(results)));
+      List<T> results = Types.cast(promises);
+      return forEach(promises, execInit, results::set)
+        .map(() -> results);
+    });
   }
 
   @Override
@@ -100,13 +102,17 @@ public class DefaultParallelBatch<T> implements ParallelBatch<T> {
   }
 
   private static <T> Operation forEach(Iterable<? extends Promise<T>> promises, Action<? super Execution> execInit, BiAction<? super Integer, ? super T> consumer) {
-    AtomicReference<Throwable> error = new AtomicReference<>();
-    AtomicBoolean done = new AtomicBoolean();
-    AtomicInteger wip = new AtomicInteger();
-
-    return Promise.async(d -> {
-      int i = 0;
+    return Operation.async(d -> {
       Iterator<? extends Promise<T>> iterator = promises.iterator();
+      if (!iterator.hasNext()) {
+        d.success(null);
+        return;
+      }
+
+      int i = 0;
+      AtomicReference<Throwable> error = new AtomicReference<>();
+      AtomicBoolean done = new AtomicBoolean();
+      AtomicInteger wip = new AtomicInteger();
       while (iterator.hasNext()) {
         Promise<T> promise = iterator.next();
         final int finalI = i++;
@@ -128,13 +134,11 @@ public class DefaultParallelBatch<T> implements ParallelBatch<T> {
             }
           })
           .start(e -> {
-            //noinspection ThrowableResultOfMethodCallIgnored
             if (error.get() == null) {
               promise.result(t -> {
                 if (t.isError()) {
                   Throwable thisError = t.getThrowable();
                   if (!error.compareAndSet(null, thisError)) {
-                    //noinspection ThrowableResultOfMethodCallIgnored
                     Throwable firstError = error.get();
                     if (firstError != thisError) {
                       firstError.addSuppressed(thisError);
@@ -147,16 +151,13 @@ public class DefaultParallelBatch<T> implements ParallelBatch<T> {
             }
           });
       }
-      if (i == 0) {
-        d.success(null);
-      }
-    }).operation();
+    });
   }
 
   @Override
   public TransformablePublisher<T> publisher() {
-    Iterator<? extends Promise<T>> iterator = promises.iterator();
     return new BufferingPublisher<>(Action.noop(), write -> {
+      Iterator<? extends Promise<T>> iterator = promises.iterator();
       return new Subscription() {
         volatile boolean cancelled;
         volatile boolean complete;

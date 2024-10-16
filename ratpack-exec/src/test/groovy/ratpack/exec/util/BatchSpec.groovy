@@ -49,6 +49,22 @@ class BatchSpec extends BaseRatpackSpec {
     result.collect { it.valueOrThrow } == (1..9).collect { "Promise ${it}".toString() }
   }
 
+  def "parallel forEach is repeatable"() {
+    given:
+    def promises = (1..9).collect { i -> Blocking.get { "Promise $i" } }
+    def batch = ParallelBatch.of(promises)
+    def l = new ArrayList<Object>(promises)
+
+    def op = batch.forEach {i, v -> l.set(i, v) }
+
+    when:
+    def result1 = exec.yieldSingle { e -> op.map { new ArrayList<>(l) } }.valueOrThrow
+    def result2 = exec.yieldSingle { e -> op.map { new ArrayList<>(l) } }.valueOrThrow
+
+    then:
+    result1.sort() == result2.sort()
+  }
+
   def "parallel yield all success"() {
     given:
     def promises = (1..9).collect { i -> Blocking.get { "Promise $i" } }
@@ -64,7 +80,7 @@ class BatchSpec extends BaseRatpackSpec {
 
   def "yield failure parallel"() {
     given:
-    def handles = new ConcurrentLinkedQueue()
+    def handles = new ConcurrentLinkedQueue<Runnable>()
     def counter = new AtomicInteger(10)
     def promises = (0..9).collect { i ->
       Blocking.get {
@@ -74,8 +90,8 @@ class BatchSpec extends BaseRatpackSpec {
         } else {
           "Promise $v"
         }
-      }.defer {
-        handles << it
+      }.defer {runnable ->
+        handles << runnable
         if (counter.decrementAndGet() == 0) {
           handles.each { it.run() }
         }

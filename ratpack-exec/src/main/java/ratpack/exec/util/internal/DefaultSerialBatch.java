@@ -41,28 +41,29 @@ public class DefaultSerialBatch<T> implements SerialBatch<T> {
 
   @Override
   public Promise<List<? extends ExecResult<T>>> yieldAll() {
-    List<Promise<T>> promises = Lists.newArrayList(this.promises);
-    List<ExecResult<T>> results = Types.cast(promises);
-    return Promise.async(d ->
-      yieldPromise(promises.iterator(), 0,
+    return Promise.async(d -> {
+      List<Promise<T>> promises = Lists.newArrayList(this.promises);
+      List<ExecResult<T>> results = Types.cast(promises);
+      yieldPromise(
+        promises.iterator(),
+        0,
         results::set,
         (i, r) -> {
           results.set(i, r);
           return true;
         },
         () -> d.success(results)
-      )
-    );
+      );
+    });
   }
 
   @Override
   public Promise<List<T>> yield() {
-    List<T> results = new ArrayList<>();
-    return Promise.async(d ->
-      forEach(promises, (i, r) -> results.add(r))
-        .onError(d::error)
-        .then(() -> d.success(results))
-    );
+    return Promise.flatten(() -> {
+      List<T> results = new ArrayList<>();
+      return forEach(promises, (i, r) -> results.add(r))
+        .map(() -> results);
+    });
   }
 
   @Override
@@ -71,38 +72,55 @@ public class DefaultSerialBatch<T> implements SerialBatch<T> {
   }
 
   private static <T> Operation forEach(Iterable<? extends Promise<T>> promises, BiAction<? super Integer, ? super T> consumer) {
-    return Promise.<Void>async(d ->
-      yieldPromise(promises.iterator(), 0, (i, r) -> consumer.execute(i, r.getValue()), (i, r) -> {
-        d.error(r.getThrowable());
-        return false;
-      }, () -> d.success(null))
-    ).operation();
+    return Operation.async(d ->
+      yieldPromise(
+        promises.iterator(),
+        0,
+        (i, r) -> consumer.execute(i, r.getValue()),
+        (i, r) -> {
+          d.error(r.getThrowable());
+          return false;
+        },
+        () -> d.success(null)
+      )
+    );
   }
 
   @Override
   public TransformablePublisher<T> publisher() {
-    Iterator<? extends Promise<T>> iterator = promises.iterator();
-    return Streams.flatYield(r -> {
-      if (iterator.hasNext()) {
-        return iterator.next();
-      } else {
-        return Promise.ofNull();
-      }
-    });
+    return subscriber -> {
+      Iterator<? extends Promise<T>> iterator = promises.iterator();
+      Streams.flatYield(r -> {
+          if (iterator.hasNext()) {
+            return iterator.next();
+          } else {
+            return Promise.ofNull();
+          }
+        })
+        .subscribe(subscriber);
+    };
   }
 
-  private static <T> void yieldPromise(Iterator<? extends Promise<T>> promises, int i, BiAction<Integer, ExecResult<T>> withItem, BiFunction<Integer, ExecResult<T>, Boolean> onError, Runnable onComplete) {
+  private static <T> void yieldPromise(
+    Iterator<? extends Promise<T>> promises,
+    int i,
+    BiAction<Integer, ExecResult<T>> withItem,
+    BiFunction<Integer, ExecResult<T>, Boolean> onError,
+    Runnable onComplete
+  ) {
     if (promises.hasNext()) {
-      promises.next().result(r -> {
-        if (r.isError()) {
-          if (!onError.apply(i, r)) {
-            return;
+      promises.next()
+        .result(r -> {
+          if (r.isError()) {
+            if (!onError.apply(i, r)) {
+              return;
+            }
+          } else {
+            withItem.execute(i, r);
           }
-        } else {
-          withItem.execute(i, r);
-        }
-        yieldPromise(promises, i + 1, withItem, onError, onComplete);
-      });
+
+          yieldPromise(promises, i + 1, withItem, onError, onComplete);
+        });
     } else {
       onComplete.run();
     }
