@@ -16,6 +16,7 @@
 
 package ratpack.exec;
 
+import io.netty.util.concurrent.Future;
 import ratpack.api.NonBlocking;
 import ratpack.exec.internal.CachingUpstream;
 import ratpack.exec.internal.DefaultExecution;
@@ -2622,6 +2623,25 @@ public interface Promise<T> {
    */
   static <T> Promise<T> toPromise(CompletableFuture<T> future) {
     return async(downstream -> downstream.accept(future));
+  }
+
+  /**
+   * Convert a {@link Future} into a promise.
+   * <p>
+   *
+   * @param future the {@link Future} to convert into a {@link Promise}
+   * @param <T> The type of the promised value
+   * @return a {@link Promise} that will be consumed on the current execution thread.
+   * @since 1.10
+   */
+  static <T> Promise<T> toPromise(Future<T> future) {
+    return async(downstream -> future.addListener(__ -> {
+      if (future.isSuccess()) {
+        downstream.success(future.getNow());
+      } else {
+        downstream.error(future.cause());
+      }
+    }));
   }
 
 }

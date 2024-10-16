@@ -100,7 +100,7 @@ class RatpackRetrofitSpec extends BaseRatpackSpec {
           response.status(500).send()
         }
         get("error/with_body") {
-          response.status(500).send("application/json","{\"error\" : \"error body\"}")
+          response.status(500).send("application/json", "{\"error\" : \"error body\"}")
         }
         post("bar") {
           response.status(200).send()
@@ -270,8 +270,7 @@ class RatpackRetrofitSpec extends BaseRatpackSpec {
       registryOf { add ServerErrorHandler, new DefaultDevelopmentErrorHandler() }
       handlers {
         get {
-          sleep 3000
-          render "OK"
+          render Promise.toPromise(directChannelAccess.channel.closeFuture()).map { "ok" }
         }
       }
     }
@@ -286,7 +285,6 @@ class RatpackRetrofitSpec extends BaseRatpackSpec {
       builder.httpClient {
         HttpClient.of {
           it.maxContentLength(ServerConfig.DEFAULT_MAX_CONTENT_LENGTH)
-          it.connectTimeout(Duration.ofMillis(3000))
           it.readTimeout(Duration.ofMillis(readTimeout))
         }
       }
