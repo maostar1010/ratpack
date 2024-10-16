@@ -16,10 +16,13 @@
 
 package ratpack.http.client
 
-import ratpack.exec.Execution
 import io.netty.handler.codec.http.HttpResponseStatus
+import io.netty.handler.codec.http.TooLongHttpContentException
+import ratpack.exec.Execution
 import ratpack.func.Action
+import ratpack.http.ResponseChunks
 import ratpack.http.internal.HttpHeaderConstants
+import ratpack.stream.Streams
 
 import java.time.Duration
 
@@ -451,4 +454,110 @@ class HttpClientRedirectionSpec extends BaseHttpClientSpec {
     getText("rel-protocol") == "ok1"
   }
 
+  def "can handle redirects with content"() {
+    when:
+    handlers {
+      get("a") {
+        response.with {
+          status(302)
+          headers.set(HttpHeaderConstants.LOCATION, "/b")
+          send("redirect to /b")
+        }
+      }
+      get("b") {
+        render "ok"
+      }
+    }
+
+    then:
+    getText("a") == "ok"
+  }
+
+  def "can handle redirects with too large content"() {
+    given:
+    requestSpec {
+      it.maxContentLength(3)
+    }
+
+    when:
+    handlers {
+      get("a") {
+        response.with {
+          status(302)
+          headers.set(HttpHeaderConstants.LOCATION, "/b")
+          send("redirect to /b")
+        }
+      }
+      get("b") {
+        render "ok"
+      }
+    }
+    getText("a") == "ok"
+
+    then:
+    thrown(TooLongHttpContentException)
+  }
+
+  def "can handle redirects with streamed content"() {
+    when:
+    handlers {
+      get("a") {
+        response.with {
+          status(302)
+          headers.set(HttpHeaderConstants.LOCATION, "/b")
+          render ResponseChunks.stringChunks(Streams.publish(["redirect", "to", "/b"]))
+        }
+      }
+      get("b") {
+        render "ok"
+      }
+    }
+
+    then:
+    getText("a") == "ok"
+  }
+
+  def "can handle redirects with empty content"() {
+    when:
+    handlers {
+      get("a") {
+        response.with {
+          status(302)
+          headers.set(HttpHeaderConstants.LOCATION, "/b")
+          sendStream(Streams.empty())
+        }
+      }
+      get("b") {
+        render "ok"
+      }
+    }
+
+    then:
+    getText("a") == "ok"
+  }
+
+  def "can handle redirects with too-large streamed content"() {
+    given:
+    requestSpec {
+      it.maxContentLength(3)
+    }
+
+    when:
+    handlers {
+      get("a") {
+        response.with {
+          status(302)
+          headers.set(HttpHeaderConstants.LOCATION, "/b")
+          render ResponseChunks.stringChunks(Streams.publish(["redirect", "to", "/b"]))
+        }
+      }
+      get("b") {
+        render "ok"
+      }
+    }
+    getText("a") == "ok"
+
+    then:
+    thrown(TooLongHttpContentException)
+  }
 }

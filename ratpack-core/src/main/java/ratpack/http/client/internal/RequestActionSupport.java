@@ -38,7 +38,6 @@ import ratpack.exec.Execution;
 import ratpack.exec.Upstream;
 import ratpack.exec.internal.DefaultExecution;
 import ratpack.func.Action;
-import ratpack.func.Function;
 import ratpack.http.Headers;
 import ratpack.http.Status;
 import ratpack.http.client.HttpClientReadTimeoutException;
@@ -46,6 +45,7 @@ import ratpack.http.client.ReceivedResponse;
 import ratpack.http.client.RequestSpec;
 import ratpack.http.internal.*;
 
+import javax.annotation.Nullable;
 import javax.net.ssl.SSLEngine;
 import javax.net.ssl.SSLException;
 import javax.net.ssl.SSLParameters;
@@ -60,6 +60,8 @@ abstract class RequestActionSupport<T> implements Upstream<T> {
   private static final String CLIENT_CODEC_HANDLER_NAME = "clientCodec";
   private static final String READ_TIMEOUT_HANDLER_NAME = "readTimeout";
   private static final String REDIRECT_HANDLER_NAME = "redirect";
+  private static final String REDIRECT_AGGREGATOR_HANDLER_NAME = "redirect-aggregator";
+  private static final String REDIRECT_RESPONDER_HANDLER_NAME = "redirect-responder";
   private static final String DECOMPRESS_HANDLER_NAME = "decompressor";
   private static final String WRITABILITY_HANDLER_NAME = "writability";
 
@@ -72,11 +74,11 @@ abstract class RequestActionSupport<T> implements Upstream<T> {
   private final int redirectCount;
   private final Action<? super RequestSpec> requestConfigurer;
 
-  private boolean fired;
   private boolean disposed;
   private boolean expectContinue;
   private boolean receivedContinue;
   private boolean streamingBody;
+  private boolean aggregatingRedirect;
 
   private static final Runnable NOOP_RUNNABLE = () -> {
   };
@@ -386,7 +388,12 @@ abstract class RequestActionSupport<T> implements Upstream<T> {
   protected Future<Void> doDispose(ChannelPipeline channelPipeline, boolean forceClose) {
     channelPipeline.remove(CLIENT_CODEC_HANDLER_NAME);
     channelPipeline.remove(READ_TIMEOUT_HANDLER_NAME);
-    channelPipeline.remove(REDIRECT_HANDLER_NAME);
+    if (aggregatingRedirect) {
+      channelPipeline.remove(REDIRECT_AGGREGATOR_HANDLER_NAME);
+      channelPipeline.remove(REDIRECT_RESPONDER_HANDLER_NAME);
+    } else {
+      channelPipeline.remove(REDIRECT_HANDLER_NAME);
+    }
     channelPipeline.remove(WRITABILITY_HANDLER_NAME);
 
     if (channelPipeline.get(DECOMPRESS_HANDLER_NAME) != null) {
@@ -416,7 +423,6 @@ abstract class RequestActionSupport<T> implements Upstream<T> {
     p.addLast(READ_TIMEOUT_HANDLER_NAME, new ReadTimeoutHandler(requestConfig.readTimeout.toNanos(), TimeUnit.NANOSECONDS));
 
     p.addLast(REDIRECT_HANDLER_NAME, new SimpleChannelInboundHandler<HttpObject>(false) {
-      boolean redirected;
       HttpResponse response;
 
       @Override
@@ -433,6 +439,7 @@ abstract class RequestActionSupport<T> implements Upstream<T> {
           sendRequestBody(downstream, ctx.channel());
           return;
         }
+
         if (msg instanceof HttpResponse) {
           this.response = (HttpResponse) msg;
           int status = response.status().code();
@@ -450,52 +457,77 @@ abstract class RequestActionSupport<T> implements Upstream<T> {
             }
           }
 
-          int maxRedirects = requestConfig.maxRedirects;
           String locationValue = response.headers().getAsString(HttpHeaderConstants.LOCATION);
-          Action<? super RequestSpec> redirectConfigurer = RequestActionSupport.this.requestConfigurer;
-          if (isRedirect(status) && redirectCount < maxRedirects && locationValue != null) {
-            final Function<? super ReceivedResponse, Action<? super RequestSpec>> onRedirect = requestConfig.onRedirect;
-            if (onRedirect != null) {
-              final Action<? super RequestSpec> onRedirectResult = ((DefaultExecution) execution).runSync(() -> onRedirect.apply(toReceivedResponse(response)));
-              if (onRedirectResult == null) {
-                redirectConfigurer = null;
+          if (isRedirect(status) && redirectCount < requestConfig.maxRedirects && locationValue != null) {
+            Upstream<T> redirector = maybeCreateRedirector(requestConfigurer, status, locationValue);
+            if (redirector != null) {
+              if (msg instanceof LastHttpContent) {
+                doRedirect(ctx, redirector);
+                return;
               } else {
-                redirectConfigurer = redirectConfigurer.append(onRedirectResult);
-              }
-            }
-
-            if (redirectConfigurer != null) {
-              Action<? super RequestSpec> redirectRequestConfig = s -> {
-                if (status == 301 || status == 302) {
-                  s.get();
-                }
-              };
-              Action<? super RequestSpec> finalRedirectRequestConfig = redirectConfigurer.append(redirectRequestConfig);
-
-              Action<? super RequestSpec> executionBoundRedirectRequestConfig = request -> {
-                ((DefaultExecution) execution).runSync(() -> {
-                  finalRedirectRequestConfig.execute(request);
-                  return null;
-                });
-              };
-              URI locationUri = absolutizeRedirect(requestConfig.uri, locationValue);
-
-              redirected = true;
-              Future<Void> dispose = dispose(ctx.pipeline(), response);
-              dispose
-                .addListener(future -> {
-                  if (future.isSuccess()) {
-                    onRedirect(locationUri, redirectCount + 1, expectContinue, executionBoundRedirectRequestConfig).connect(downstream);
-                  } else {
-                    downstream.error(future.cause());
+                aggregatingRedirect = true;
+                ctx.pipeline().addAfter(REDIRECT_HANDLER_NAME, REDIRECT_AGGREGATOR_HANDLER_NAME, new HttpObjectAggregator(requestConfig.maxContentLength));
+                ctx.pipeline().addAfter(REDIRECT_AGGREGATOR_HANDLER_NAME, REDIRECT_RESPONDER_HANDLER_NAME, new SimpleChannelInboundHandler<FullHttpResponse>() {
+                  @Override
+                  protected void channelRead0(ChannelHandlerContext ctx, FullHttpResponse msg) {
+                    doRedirect(ctx, redirector);
                   }
                 });
+                ctx.pipeline().remove(REDIRECT_HANDLER_NAME);
+                ctx.channel().config().setAutoRead(true);
+              }
             }
           }
         }
 
-        if (!redirected) {
-          ctx.fireChannelRead(msg);
+        ctx.fireChannelRead(msg);
+      }
+
+      private void doRedirect(ChannelHandlerContext ctx, Upstream<T> redirector) {
+        dispose(ctx.pipeline(), response)
+          .addListener(future -> {
+            if (future.isSuccess()) {
+              redirector.connect(downstream);
+            } else {
+              downstream.error(future.cause());
+            }
+          });
+      }
+
+      @Nullable
+      private Upstream<T> maybeCreateRedirector(Action<? super RequestSpec> redirectConfigurer, int status, String locationValue) throws Exception {
+        if (requestConfig.onRedirect != null) {
+          Action<? super RequestSpec> onRedirectResult = ((DefaultExecution) execution)
+            .runSync(() -> requestConfig.onRedirect.apply(toReceivedResponse(response)));
+
+          if (onRedirectResult == null) {
+            redirectConfigurer = null;
+          } else {
+            redirectConfigurer = redirectConfigurer.append(onRedirectResult);
+          }
+        }
+
+        if (redirectConfigurer != null) {
+          Action<? super RequestSpec> redirectRequestConfig = s -> {
+            if (status == 301 || status == 302) {
+              s.get();
+            }
+          };
+          Action<? super RequestSpec> finalRedirectRequestConfig = redirectConfigurer.append(redirectRequestConfig);
+
+          Action<? super RequestSpec> executionBoundRedirectRequestConfig = request ->
+            ((DefaultExecution) execution).runSync(() -> {
+              finalRedirectRequestConfig.execute(request);
+              return null;
+            });
+
+          return onRedirect(
+            absolutizeRedirect(requestConfig.uri, locationValue),
+            redirectCount + 1,
+            expectContinue,
+            executionBoundRedirectRequestConfig);
+        } else {
+          return null;
         }
       }
     });
@@ -538,13 +570,6 @@ abstract class RequestActionSupport<T> implements Upstream<T> {
   }
 
   protected abstract Upstream<T> onRedirect(URI locationUrl, int redirectCount, boolean expectContinue, Action<? super RequestSpec> redirectRequestConfig) throws Exception;
-
-  protected void error(Downstream<?> downstream, Throwable error) {
-    if (!fired && !disposed) {
-      fired = true;
-      downstream.error(error);
-    }
-  }
 
   private ReceivedResponse toReceivedResponse(HttpResponse msg) {
     return toReceivedResponse(msg, Unpooled.EMPTY_BUFFER);
