@@ -401,12 +401,6 @@ class ResponseStreamingSpec extends RatpackGroovyDslSpec {
     input.readLine() == "transfer-encoding: chunked"
     input.readLine() == ""
 
-    and:
-    10.times {
-      input.readLine()
-      input.readLine()
-    }
-
     when:
     execSuspended.get()
     input.close()
