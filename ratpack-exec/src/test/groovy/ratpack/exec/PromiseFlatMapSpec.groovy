@@ -38,7 +38,7 @@ class PromiseFlatMapSpec extends BaseExecutionSpec {
     when:
     exec {
       Blocking.get { originalValue }
-        .flatMapIf( { s -> s == "foo" }, { s -> Blocking.get { s + "-true" } } )
+        .flatMapIf({ s -> s == "foo" }, { s -> Blocking.get { s + "-true" } })
         .then { events << it }
     }
 
@@ -48,7 +48,7 @@ class PromiseFlatMapSpec extends BaseExecutionSpec {
     where:
     originalValue | mappedValue | predicate
     "foo"         | "foo-true"  | true
-    "bar"         | "bar" | false
+    "bar"         | "bar"       | false
   }
 
   @Unroll
@@ -56,7 +56,7 @@ class PromiseFlatMapSpec extends BaseExecutionSpec {
     when:
     exec {
       Blocking.get { originalValue }
-        .flatMapIf( { s -> s == "foo" }, { s -> Blocking.get { s + "-true" } } , { s -> Blocking.get { s + "-false" } } )
+        .flatMapIf({ s -> s == "foo" }, { s -> Blocking.get { s + "-true" } }, { s -> Blocking.get { s + "-false" } })
         .then { events << it }
     }
 
@@ -100,6 +100,43 @@ class PromiseFlatMapSpec extends BaseExecutionSpec {
 
     then:
     events == [ex, "complete"]
+  }
+
+  def "flatmap can be applied to completed promise"() {
+    when:
+    exec {
+      Promise.value(null)
+        .onNull { events << "null" }
+        .flatMap { i ->
+          events << "flatMap:$i"
+          Promise.sync {
+            events << "sync"
+            "foo"
+          }
+        }
+        .close { events << "close" }
+        .then { val -> events << "then:$val" }
+    }
+
+    then:
+    events == ["null", "close", "complete"]
+  }
+
+  def "flatmap of completed promise propagates completion"() {
+    when:
+    exec {
+      Promise.value(1)
+        .flatMap { i ->
+          events << "flatMap"
+          Promise.error(new RuntimeException("!"))
+            .onError { events << "onError" }
+        }
+        .close { events << "close" }
+        .then { val -> events << "then:$val" }
+    }
+
+    then:
+    events == ["flatMap", "onError", "close", "complete"]
   }
 
 }

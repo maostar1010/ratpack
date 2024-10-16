@@ -17,12 +17,10 @@
 package ratpack.exec;
 
 import ratpack.api.NonBlocking;
+import ratpack.exec.internal.DefaultExecution;
 import ratpack.exec.internal.DefaultOperation;
-import ratpack.func.Action;
-import ratpack.func.Block;
-import ratpack.func.Factory;
-import ratpack.func.Function;
-import ratpack.func.Predicate;
+import ratpack.exec.internal.WrappedUserUpstream;
+import ratpack.func.*;
 
 import java.util.Optional;
 
@@ -68,13 +66,27 @@ import java.util.Optional;
  * }</pre>
  */
 @NonBlocking
-public interface Operation {
+public interface Operation extends Upstream<Void> {
+
+  static Operation async(Upstream<Void> upstream) {
+    if (upstream instanceof Operation) {
+      return (Operation) upstream;
+    } else {
+      return DefaultOperation.of(WrappedUserUpstream.of(upstream));
+    }
+  }
 
   static Operation of(Block block) {
-    return new DefaultOperation(Promise.sync(() -> {
-      block.execute();
-      return null;
-    }));
+    return DefaultOperation.of(down ->
+      DefaultExecution.require().delimit(down::error, continuation -> {
+        block.execute();
+        continuation.resume(() -> down.success(null));
+      })
+    );
+  }
+
+  static Operation noop() {
+    return of(Block.noop());
   }
 
   /**
@@ -85,7 +97,17 @@ public interface Operation {
    * @since 1.5
    */
   static Operation flatten(Factory<Operation> factory) {
-    return new DefaultOperation(Promise.flatten(() -> factory.create().promise()));
+    return DefaultOperation.of(down -> {
+      Operation operation;
+      try {
+        operation = factory.create();
+      } catch (Throwable t) {
+        down.error(t);
+        return;
+      }
+
+      operation.connect(down);
+    });
   }
 
   default Operation onError(Action<? super Throwable> onError) {
@@ -103,11 +125,13 @@ public interface Operation {
    * @return An operation for the successful result
    * @since 1.9
    */
-  Operation onError(Predicate<? super Throwable> predicate, Action<? super Throwable> errorHandler);
+  default Operation onError(Predicate<? super Throwable> predicate, Action<? super Throwable> errorHandler) {
+    return transform(up -> down -> up.connect(down.consumeErrorIf(predicate, errorHandler)));
+  }
 
   /**
    * Specifies the action to take if the an error of the given type occurs trying to perform the operation.
-   *
+   * <p>
    * If the given action throws an exception, the original exception will be rethrown with the exception thrown
    * by the action added to the suppressed exceptions list.
    *
@@ -137,41 +161,13 @@ public interface Operation {
    * @return an operation
    * @since 1.5
    */
-  default Operation mapError(Action<? super Throwable> action) {
-    return promise().transform(up -> down ->
-      up.connect(new Downstream<Void>() {
-        @Override
-        public void success(Void value) {
-          down.success(value);
-        }
-
-        @Override
-        public void error(Throwable throwable) {
-          Operation.of(() -> action.execute(throwable)).promise().connect(new Downstream<Void>() {
-            @Override
-            public void success(Void value) {
-              down.success(value);
-            }
-
-            @Override
-            public void error(Throwable throwable) {
-              down.error(throwable);
-            }
-
-            @Override
-            public void complete() {
-              down.complete();
-            }
-          });
-
-        }
-
-        @Override
-        public void complete() {
-          down.complete();
-        }
-      })
-    ).operation();
+  default Operation mapError(@NonBlocking Action<? super Throwable> action) {
+    return transform(up -> down ->
+      up.connect(down.onError(throwable ->
+        Operation.of(() -> action.execute(throwable))
+          .connect(down)
+      ))
+    );
   }
 
   void then(Block block);
@@ -183,19 +179,41 @@ public interface Operation {
   Promise<Void> promise();
 
   default <T> Promise<T> map(Factory<? extends T> factory) {
-    return promise().map(n -> factory.create());
+    return Promise.async(down ->
+      connect(down.onSuccess(ignored -> {
+        T t;
+        try {
+          t = factory.create();
+        } catch (Throwable throwable) {
+          down.error(throwable);
+          return;
+        }
+        down.success(t);
+      }))
+    );
   }
 
   default <T> Promise<T> flatMap(Factory<? extends Promise<T>> factory) {
-    return promise().flatMap(n -> factory.create());
+    return Promise.async(down ->
+      connect(down.onSuccess(ignored -> {
+        Promise<T> t;
+        try {
+          t = factory.create();
+        } catch (Throwable throwable) {
+          down.error(throwable);
+          return;
+        }
+        t.connect(down);
+      }))
+    );
   }
 
   default <T> Promise<T> flatMap(Promise<T> promise) {
-    return promise().flatMap(n -> promise);
+    return Promise.async(down -> connect(down.onSuccess(ignored -> promise.connect(down))));
   }
 
   default Operation next(Operation operation) {
-    return new DefaultOperation(flatMap(operation::promise));
+    return transform(up -> down -> up.connect(down.onSuccess(ignored -> operation.connect(down))));
   }
 
   default Operation next(Block operation) {
@@ -218,18 +236,73 @@ public interface Operation {
   }
 
   default Operation wiretap(Action<? super Optional<? extends Throwable>> action) {
-    return promise().wiretap(r -> {
-        if (r.isError()) {
-          action.execute(Optional.of(r.getThrowable()));
-        } else {
-          action.execute(Optional.<Throwable>empty());
+    return transform(up -> down ->
+      up.connect(new Downstream<Void>() {
+        @Override
+        public void success(Void value) {
+          try {
+            action.execute(Optional.empty());
+          } catch (Throwable t) {
+            down.error(t);
+          }
         }
-      }
-    ).operation();
+
+        @Override
+        public void error(Throwable throwable) {
+          try {
+            action.execute(Optional.of(throwable));
+          } catch (Throwable t) {
+            down.error(t);
+          }
+        }
+
+        @Override
+        public void complete() {
+          down.complete();
+        }
+      }));
   }
 
-  static Operation noop() {
-    return of(Block.noop());
+  Operation transform(Function<? super Upstream<Void>, ? extends Upstream<Void>> upstreamTransformer);
+
+  /**
+   * A low level hook for consuming the promised value.
+   * <p>
+   * It is generally preferable to use {@link #then()} over this method.
+   *
+   * @param downstream the downstream consumer
+   * @since 1.10
+   */
+  void connect(Downstream<? super Void> downstream);
+
+  /**
+   * Closes the given closeable control flows to this point.
+   * <p>
+   * This can be used to simulate a try/finally synchronous construct.
+   * It is typically used to close some resource after an asynchronous operation.
+   * <p>
+   * The general pattern is to open the resource, and then pass it to some method/closure that works with it and returns an operation.
+   * This method is then called on the returned operation to clean up the resource.
+   *
+   * @param closeable the closeable to close
+   * @return an operation
+   * @see #close(Operation)
+   * @since 1.10
+   */
+  default Operation close(AutoCloseable closeable) {
+    return transform(up -> down -> up.connect(down.closing(closeable)));
   }
+
+  /**
+   * Like {@link #close(AutoCloseable)}, but allows async close operations.
+   *
+   * @param closer the close operation.
+   * @return an operation
+   * @since 1.10
+   */
+  default Operation close(Operation closer) {
+    return transform(up -> down -> up.connect(down.closing(closer)));
+  }
+
 
 }

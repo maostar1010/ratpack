@@ -17,107 +17,50 @@
 package ratpack.exec.internal;
 
 import ratpack.exec.*;
-import ratpack.func.Action;
 import ratpack.func.Block;
-import ratpack.func.Predicate;
+import ratpack.func.Function;
+import ratpack.util.Exceptions;
 
 public class DefaultOperation implements Operation {
 
-  private final Upstream<?> upstream;
+  private final Upstream<Void> upstream;
 
-  public DefaultOperation(Upstream<?> upstream) {
-    this.upstream = upstream;
+  public static Operation of(Upstream<Void> upstream) {
+    if (upstream instanceof DefaultOperation) {
+      return (Operation) upstream;
+    } else {
+      return new DefaultOperation(upstream);
+    }
   }
 
-  public DefaultOperation(Promise<?> promise) {
-    this(downstream -> promise.connect(new Downstream<Object>() {
-      @Override
-      public void success(Object value) {
-        downstream.success(null);
-      }
-
-      @Override
-      public void error(Throwable throwable) {
-        downstream.error(throwable);
-      }
-
-      @Override
-      public void complete() {
-        downstream.complete();
-      }
-    }));
+  private DefaultOperation(Upstream<Void> upstream) {
+    this.upstream = upstream;
   }
 
   @Override
   public Promise<Void> promise() {
-    return Promise.async(down ->
-      upstream.connect(new Downstream<Object>() {
-        @Override
-        public void success(Object value) {
-          down.success(null);
-        }
-
-        @Override
-        public void error(Throwable throwable) {
-          down.error(throwable);
-        }
-
-        @Override
-        public void complete() {
-          down.complete();
-        }
-      })
-    );
+    return Promise.async(upstream);
   }
 
   @Override
-  public Operation onError(Predicate<? super Throwable> predicate, Action<? super Throwable> errorHandler) {
-    return new DefaultOperation(down ->
-      upstream.connect(new Downstream<Object>() {
-        @Override
-        public void success(Object value) {
-          down.success(null);
-        }
+  public Operation transform(Function<? super Upstream<Void>, ? extends Upstream<Void>> upstreamTransformer) {
+    try {
+      return new DefaultOperation(upstreamTransformer.apply(upstream));
+    } catch (Throwable e) {
+      throw Exceptions.uncheck(e);
+    }
+  }
 
-        @SuppressWarnings("DuplicatedCode")
-        @Override
-        public void error(Throwable throwable) {
-          try {
-            if (predicate.apply(throwable)) {
-              Promise.<Void>sync(() -> {
-                  errorHandler.execute(throwable);
-                  return null;
-                })
-                .connect(new Downstream<Void>() {
-                  @Override
-                  public void success(Void value) {
-                    down.complete();
-                  }
-
-                  @Override
-                  public void error(Throwable e) {
-                    down.error(e);
-                  }
-
-                  @Override
-                  public void complete() {
-                    down.complete();
-                  }
-                });
-            } else {
-              down.error(throwable);
-            }
-          } catch (Throwable e) {
-            down.error(e);
-          }
-        }
-
-        @Override
-        public void complete() {
-          down.complete();
-        }
-      })
-    );
+  @Override
+  public void connect(Downstream<? super Void> downstream) {
+    ExecThreadBinding.requireComputeThread("Operation.connect() can only be called on a compute thread");
+    try {
+      upstream.connect(downstream);
+    } catch (ExecutionException e) {
+      throw e;
+    } catch (Throwable e) {
+      DefaultExecution.throwError(e);
+    }
   }
 
   @Override
@@ -129,13 +72,13 @@ public class DefaultOperation implements Operation {
           try {
             block.execute();
           } catch (Throwable e) {
-            DefaultPromise.throwError(e);
+            DefaultExecution.throwError(e);
           }
         }
 
         @Override
         public void error(Throwable throwable) {
-          DefaultPromise.throwError(throwable);
+          DefaultExecution.throwError(throwable);
         }
 
         @Override
@@ -146,7 +89,7 @@ public class DefaultOperation implements Operation {
     } catch (ExecutionException e) {
       throw e;
     } catch (Throwable e) {
-      DefaultPromise.throwError(e);
+      DefaultExecution.throwError(e);
     }
   }
 

@@ -16,18 +16,9 @@
 
 package ratpack.exec.internal;
 
-import ratpack.exec.Downstream;
-import ratpack.exec.Execution;
-import ratpack.exec.ExecutionException;
-import ratpack.exec.Promise;
-import ratpack.exec.Upstream;
+import ratpack.exec.*;
 import ratpack.exec.util.retry.RetryPolicy;
-import ratpack.func.Action;
-import ratpack.func.BiAction;
-import ratpack.func.BiFunction;
-import ratpack.func.Block;
-import ratpack.func.Function;
-import ratpack.func.Predicate;
+import ratpack.func.*;
 import ratpack.util.Exceptions;
 
 import java.time.Duration;
@@ -38,7 +29,15 @@ public class DefaultPromise<T> implements Promise<T> {
 
   private final Upstream<T> upstream;
 
-  public DefaultPromise(Upstream<T> upstream) {
+  public static <T> Promise<T> of(Upstream<T> upstream) {
+    if (upstream instanceof Promise) {
+      return (Promise<T>) upstream;
+    } else {
+      return new DefaultPromise<>(upstream);
+    }
+  }
+
+  private DefaultPromise(Upstream<T> upstream) {
     this.upstream = upstream;
   }
 
@@ -51,13 +50,13 @@ public class DefaultPromise<T> implements Promise<T> {
         try {
           then.execute(value);
         } catch (Throwable e) {
-          throwError(e);
+          DefaultExecution.throwError(e);
         }
       }
 
       @Override
       public void error(Throwable throwable) {
-        throwError(throwable);
+        DefaultExecution.throwError(throwable);
       }
 
       @Override
@@ -79,12 +78,8 @@ public class DefaultPromise<T> implements Promise<T> {
     } catch (ExecutionException e) {
       throw e;
     } catch (Throwable e) {
-      throwError(e);
+      DefaultExecution.throwError(e);
     }
-  }
-
-  public static void throwError(Throwable throwable) {
-    DefaultExecution.require().delimit(Action.throwException(), h -> h.resume(Block.throwException(throwable)));
   }
 
   @Override
@@ -96,6 +91,14 @@ public class DefaultPromise<T> implements Promise<T> {
     }
   }
 
+  @Override
+  public Operation operation() {
+    if (upstream instanceof Operation) {
+      return (Operation) upstream;
+    } else {
+      return Promise.super.operation();
+    }
+  }
 
   public static <T> void retryAttempt(int attemptNum, int maxAttempts, Upstream<? extends T> up, Downstream<? super T> down, BiFunction<? super Integer, ? super Throwable, Promise<Duration>> onError) throws Exception {
     up.connect(down.onError(e -> {

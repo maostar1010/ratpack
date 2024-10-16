@@ -18,10 +18,7 @@ package ratpack.exec;
 
 import io.netty.util.concurrent.Future;
 import ratpack.api.NonBlocking;
-import ratpack.exec.internal.CachingUpstream;
-import ratpack.exec.internal.DefaultExecution;
-import ratpack.exec.internal.DefaultOperation;
-import ratpack.exec.internal.DefaultPromise;
+import ratpack.exec.internal.*;
 import ratpack.exec.util.Promised;
 import ratpack.exec.util.retry.RetryPolicy;
 import ratpack.func.*;
@@ -56,7 +53,7 @@ import static ratpack.func.Action.ignoreArg;
  * @param <T> the type of promised value
  */
 @SuppressWarnings("JavadocReference")
-public interface Promise<T> {
+public interface Promise<T> extends Upstream<T> {
 
   /**
    * Creates a promise for value that will be produced asynchronously.
@@ -95,7 +92,11 @@ public interface Promise<T> {
    * @since 1.3
    */
   static <T> Promise<T> async(Upstream<T> upstream) {
-    return new DefaultPromise<>(DefaultExecution.upstream(upstream));
+    if (upstream instanceof Promise) {
+      return (Promise<T>) upstream;
+    } else {
+      return DefaultPromise.of(WrappedUserUpstream.of(upstream));
+    }
   }
 
   /**
@@ -133,12 +134,12 @@ public interface Promise<T> {
    * @since 1.3
    */
   static <T> Promise<T> sync(Factory<T> factory) {
-    return new DefaultPromise<>(down ->
+    return DefaultPromise.of(down ->
       DefaultExecution.require().delimit(down::error, continuation -> {
         T t;
         try {
           t = factory.create();
-        } catch (Exception e) {
+        } catch (Throwable e) {
           continuation.resume(() -> down.error(e));
           return;
         }
@@ -161,7 +162,7 @@ public interface Promise<T> {
    * @since 1.5
    */
   static <T> Promise<T> flatten(Factory<? extends Promise<T>> factory) {
-    return new DefaultPromise<>(down -> {
+    return DefaultPromise.of(down -> {
       Promise<T> promise;
       try {
         promise = factory.create();
@@ -221,9 +222,10 @@ public interface Promise<T> {
    * @see #error(Throwable)
    */
   static <T> Promise<T> value(T t) {
-    return new DefaultPromise<>(down -> DefaultExecution.require().delimit(down::error, continuation ->
-      continuation.resume(() -> down.success(t))
-    ));
+    return DefaultPromise.of(down ->
+      DefaultExecution.require()
+        .delimit(down::error, continuation -> continuation.resume(() -> down.success(t)))
+    );
   }
 
   /**
@@ -269,7 +271,7 @@ public interface Promise<T> {
    * @see #value(Object)
    */
   static <T> Promise<T> error(Throwable t) {
-    return new DefaultPromise<>(down -> DefaultExecution.require().delimit(down::error, continuation ->
+    return DefaultPromise.of(down -> DefaultExecution.require().delimit(down::error, continuation ->
       continuation.resume(() -> down.error(t))
     ));
   }
@@ -375,34 +377,7 @@ public interface Promise<T> {
    * @since 1.1
    */
   default Promise<T> onError(Predicate<? super Throwable> predicate, @NonBlocking Action<? super Throwable> errorHandler) {
-    return transform(up -> down ->
-      Promise.async(up).connect(down.onError(throwable -> {
-        if (predicate.apply(throwable)) {
-          Promise.<Void>sync(() -> {
-              errorHandler.execute(throwable);
-              return null;
-            })
-            .connect(new Downstream<Void>() {
-              @Override
-              public void success(Void value) {
-                down.complete();
-              }
-
-              @Override
-              public void error(Throwable e) {
-                down.error(e);
-              }
-
-              @Override
-              public void complete() {
-                down.complete();
-              }
-            });
-        } else {
-          down.error(throwable);
-        }
-      }))
-    );
+    return transform(up -> down -> up.connect(down.consumeErrorIf(predicate, errorHandler)));
   }
 
   /**
@@ -477,7 +452,7 @@ public interface Promise<T> {
         try {
           resultHandler.execute(ExecResult.of(Result.success(value)));
         } catch (Throwable e) {
-          DefaultPromise.throwError(e);
+          DefaultExecution.throwError(e);
         }
       }
 
@@ -486,7 +461,7 @@ public interface Promise<T> {
         try {
           resultHandler.execute(ExecResult.of(Result.<T>error(throwable)));
         } catch (Throwable e) {
-          DefaultPromise.throwError(e);
+          DefaultExecution.throwError(e);
         }
       }
 
@@ -495,7 +470,7 @@ public interface Promise<T> {
         try {
           resultHandler.execute(ExecResult.<T>complete());
         } catch (Throwable e) {
-          DefaultPromise.throwError(e);
+          DefaultExecution.throwError(e);
         }
       }
     });
@@ -975,24 +950,7 @@ public interface Promise<T> {
    * @return an operation
    */
   default Operation operation() {
-    return new DefaultOperation(downstream ->
-      Promise.this.connect(new Downstream<T>() {
-        @Override
-        public void success(T value) {
-          downstream.success(null);
-        }
-
-        @Override
-        public void error(Throwable throwable) {
-          downstream.error(throwable);
-        }
-
-        @Override
-        public void complete() {
-          downstream.complete();
-        }
-      })
-    );
+    return DefaultOperation.of(downstream -> connect(downstream.onSuccess(ignored -> downstream.success(null))));
   }
 
   /**
@@ -1002,7 +960,7 @@ public interface Promise<T> {
    * @return an operation representing {@code action}
    */
   default Operation operation(@NonBlocking Action<? super T> action) {
-    return new DefaultOperation(downstream ->
+    return DefaultOperation.of(downstream ->
       Promise.this.connect(new Downstream<T>() {
         @Override
         public void success(T value) {
@@ -1032,29 +990,15 @@ public interface Promise<T> {
    * @since 1.6
    */
   default Operation flatOp(Function<? super T, ? extends Operation> function) {
-    return new DefaultOperation(downstream ->
-      Promise.this.connect(new Downstream<T>() {
-        @Override
-        public void success(T value) {
-          try {
-            function.apply(value)
-              .onError(downstream::error)
-              .then(() -> downstream.success(null));
-          } catch (Exception e) {
-            downstream.error(e);
-          }
+    return DefaultOperation.of(downstream ->
+      connect(downstream.onSuccess(value -> {
+        try {
+          function.apply(value)
+            .connect(downstream);
+        } catch (Exception e) {
+          downstream.error(e);
         }
-
-        @Override
-        public void error(Throwable throwable) {
-          downstream.error(throwable);
-        }
-
-        @Override
-        public void complete() {
-          downstream.complete();
-        }
-      })
+      }))
     );
   }
 
@@ -1105,16 +1049,7 @@ public interface Promise<T> {
    * @return a promise
    */
   default Promise<T> mapError(Function<? super Throwable, ? extends T> transformer) {
-    return transform(up -> down ->
-      up.connect(down.onError(throwable -> {
-        try {
-          T transformed = transformer.apply(throwable);
-          down.success(transformed);
-        } catch (Throwable t) {
-          down.error(t);
-        }
-      }))
-    );
+    return mapError(Predicate.TRUE, transformer);
   }
 
   /**
@@ -1128,22 +1063,7 @@ public interface Promise<T> {
    * @since 1.3
    */
   default <E extends Throwable> Promise<T> mapError(Class<E> type, Function<? super E, ? extends T> function) {
-    return transform(up -> down ->
-      up.connect(down.onError(throwable -> {
-        if (type.isInstance(throwable)) {
-          T transformed;
-          try {
-            transformed = function.apply(type.cast(throwable));
-          } catch (Throwable t) {
-            down.error(t);
-            return;
-          }
-          down.success(transformed);
-        } else {
-          down.error(throwable);
-        }
-      }))
-    );
+    return mapError(type::isInstance, throwable -> function.apply(type.cast(throwable)));
   }
 
   /**
@@ -1427,7 +1347,8 @@ public interface Promise<T> {
     return transform(up -> down ->
       up.connect(down.<T>onSuccess(value -> {
         try {
-          transformer.apply(value).onError(down::error).then(down::success);
+          transformer.apply(value)
+            .connect(down);
         } catch (Throwable e) {
           down.error(e);
         }
@@ -2123,41 +2044,7 @@ public interface Promise<T> {
    * @since 1.3
    */
   default Promise<T> close(AutoCloseable closeable) {
-    return transform(up -> down ->
-      up.connect(new Downstream<T>() {
-        @Override
-        public void success(T value) {
-          try {
-            closeable.close();
-          } catch (Exception e) {
-            down.error(e);
-            return;
-          }
-          down.success(value);
-        }
-
-        @Override
-        public void error(Throwable throwable) {
-          try {
-            closeable.close();
-          } catch (Exception closerThrowable) {
-            throwable.addSuppressed(closerThrowable);
-          }
-          down.error(throwable);
-        }
-
-        @Override
-        public void complete() {
-          try {
-            closeable.close();
-          } catch (Exception e) {
-            down.error(e);
-            return;
-          }
-          down.complete();
-        }
-      })
-    );
+    return transform(up -> down -> up.connect(down.closing(closeable)));
   }
 
   /**
@@ -2168,70 +2055,7 @@ public interface Promise<T> {
    * @since 1.5
    */
   default Promise<T> close(Operation closer) {
-    return transform(up -> down ->
-      up.connect(new Downstream<T>() {
-        @Override
-        public void success(T value) {
-          closer.promise().connect(new Downstream<Void>() {
-            @Override
-            public void success(Void v) {
-              down.success(value);
-            }
-
-            @Override
-            public void error(Throwable throwable) {
-              down.error(throwable);
-            }
-
-            @Override
-            public void complete() {
-              down.success(value);
-            }
-          });
-        }
-
-        @Override
-        public void error(Throwable throwable) {
-          closer.promise().connect(new Downstream<Void>() {
-            @Override
-            public void success(Void v) {
-              down.error(throwable);
-            }
-
-            @Override
-            public void error(Throwable closerThrowable) {
-              throwable.addSuppressed(closerThrowable);
-              down.error(throwable);
-            }
-
-            @Override
-            public void complete() {
-              down.error(throwable);
-            }
-          });
-        }
-
-        @Override
-        public void complete() {
-          closer.promise().connect(new Downstream<Void>() {
-            @Override
-            public void success(Void v) {
-              down.complete();
-            }
-
-            @Override
-            public void error(Throwable innerThrowable) {
-              down.error(innerThrowable);
-            }
-
-            @Override
-            public void complete() {
-              down.complete();
-            }
-          });
-        }
-      })
-    );
+    return transform(up -> down -> up.connect(down.closing(closer)));
   }
 
   /**

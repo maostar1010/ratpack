@@ -358,6 +358,40 @@ class PromiseOperationsSpec extends BaseRatpackSpec {
     events == ["op:1", "complete"]
   }
 
+  def "flatOp can be applied to completed promise"() {
+    when:
+    exec {
+      Promise.value(null)
+        .onNull { events << "null" }
+        .flatOp { i ->
+          events << "flatOp"
+          Operation.of { events << "op:$i" }
+        }
+        .close { events << "close" }
+        .then { events << "then" }
+    }
+
+    then:
+    events == ["null", "close", "complete"]
+  }
+
+  def "flatOp of completed operation propagates completion"() {
+    when:
+    exec {
+      Promise.value(1)
+        .flatOp { i ->
+          events << "flatOp"
+          Operation.of { throw new RuntimeException("!") }
+            .onError { events << "onError" }
+        }
+        .close { events << "close" }
+        .then { events << "then" }
+    }
+
+    then:
+    events == ["flatOp", "onError", "close", "complete"]
+  }
+
   def "can apply operation conditionally"() {
     when:
     exec {
@@ -513,19 +547,19 @@ class PromiseOperationsSpec extends BaseRatpackSpec {
     def value = null
     exec {
       Promise.value(1)
-      .nextOp {
-        Operation.of {
-          throw new RuntimeException("!")
+        .nextOp {
+          Operation.of {
+            throw new RuntimeException("!")
+          }
+            .onError {
+              onErrorCalled.set(true)
+              // no rethrow
+            }
         }
-        .onError {
-          onErrorCalled.set(true)
-          // no rethrow
+        .close { closed.set(true) }
+        .then {
+          value = it
         }
-      }
-      .close { closed.set(true) }
-      .then {
-        value = it
-      }
     }
 
     then:
