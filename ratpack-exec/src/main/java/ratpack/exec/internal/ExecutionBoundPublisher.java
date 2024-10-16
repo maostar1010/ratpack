@@ -48,7 +48,7 @@ public class ExecutionBoundPublisher<T> implements TransformablePublisher<T> {
         private final AtomicBoolean pendingCancelSignal = new AtomicBoolean(true);
 
         private void dispatch(Block block) {
-          if (execution.isBound()) {
+          if (execution.isBound() && continuation.isEmpty()) {
             try {
               block.execute();
             } catch (Exception e) {

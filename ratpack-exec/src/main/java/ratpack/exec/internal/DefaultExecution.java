@@ -657,13 +657,18 @@ public class DefaultExecution implements Execution {
             addEvent(nextEvent, action);
           }
 
+          @Override
+          public boolean isEmpty() {
+            return events.isEmpty();
+          }
+
           public void complete(Block action) {
             addEvent(new NonUserCodeExecStream(parent), action);
           }
 
           private void addEvent(ExecStream parent, Block action) {
             events.add(new SingleEventExecStream(parent, Action.throwException(), continuation -> continuation.resume(action)));
-             drain();
+            drain();
           }
         })
       )));

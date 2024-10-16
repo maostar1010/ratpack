@@ -24,4 +24,5 @@ public interface ContinuationStream {
 
   void event(Block event);
 
+  boolean isEmpty();
 }
