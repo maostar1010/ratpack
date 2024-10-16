@@ -21,6 +21,7 @@ import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
 import ratpack.func.Action;
 import ratpack.func.Block;
+import ratpack.func.Predicate;
 
 import java.nio.channels.CompletionHandler;
 import java.util.concurrent.CompletionStage;
@@ -118,6 +119,17 @@ public interface Downstream<T> {
         Downstream.this.complete();
       }
     };
+  }
+
+  default Downstream<T> consumeErrorIf(Predicate<? super Throwable> predicate, Action<? super Throwable> errorHandler) {
+    return onError(throwable -> {
+      if (predicate.apply(throwable)) {
+        Operation.of(() -> errorHandler.execute(throwable))
+          .connect(onSuccess(ignored -> complete()));
+      } else {
+        error(throwable);
+      }
+    });
   }
 
   /**
@@ -236,4 +248,121 @@ public interface Downstream<T> {
     };
   }
 
+  /**
+   * Creates a decorated downstream that closes the given closeable for each signal type.
+   * <p>
+   * This can be used to simulate a try/finally synchronous construct.
+   *
+   * @param closeable the closeable to close
+   * @return a decorated downstream
+   * @see #closing(Operation)
+   * @since 1.10
+   */
+  default Downstream<T> closing(AutoCloseable closeable) {
+    return new Downstream<T>() {
+      @Override
+      public void success(T value) {
+        try {
+          closeable.close();
+        } catch (Exception e) {
+          Downstream.this.error(e);
+          return;
+        }
+        Downstream.this.success(value);
+      }
+
+      @Override
+      public void error(Throwable throwable) {
+        try {
+          closeable.close();
+        } catch (Exception closerThrowable) {
+          throwable.addSuppressed(closerThrowable);
+        }
+        Downstream.this.error(throwable);
+      }
+
+      @Override
+      public void complete() {
+        try {
+          closeable.close();
+        } catch (Exception e) {
+          Downstream.this.error(e);
+          return;
+        }
+        Downstream.this.complete();
+      }
+    };
+  }
+
+  /**
+   * Like {@link #closing(AutoCloseable)}, but allows async close operations.
+   *
+   * @param closer the close operation.
+   * @return a decorated downstream
+   * @since 1.5
+   */
+  default Downstream<T> closing(Operation closer) {
+    return new Downstream<T>() {
+      @Override
+      public void success(T value) {
+        closer.connect(new Downstream<Void>() {
+          @Override
+          public void success(Void v) {
+            Downstream.this.success(value);
+          }
+
+          @Override
+          public void error(Throwable throwable) {
+            Downstream.this.error(throwable);
+          }
+
+          @Override
+          public void complete() {
+            Downstream.this.success(value);
+          }
+        });
+      }
+
+      @Override
+      public void error(Throwable throwable) {
+        closer.connect(new Downstream<Void>() {
+          @Override
+          public void success(Void v) {
+            Downstream.this.error(throwable);
+          }
+
+          @Override
+          public void error(Throwable closerThrowable) {
+            throwable.addSuppressed(closerThrowable);
+            Downstream.this.error(throwable);
+          }
+
+          @Override
+          public void complete() {
+            Downstream.this.error(throwable);
+          }
+        });
+      }
+
+      @Override
+      public void complete() {
+        closer.connect(new Downstream<Void>() {
+          @Override
+          public void success(Void v) {
+            Downstream.this.complete();
+          }
+
+          @Override
+          public void error(Throwable innerThrowable) {
+            Downstream.this.error(innerThrowable);
+          }
+
+          @Override
+          public void complete() {
+            Downstream.this.complete();
+          }
+        });
+      }
+    };
+  }
 }

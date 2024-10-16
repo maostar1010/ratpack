@@ -122,21 +122,8 @@ public class DefaultExecution implements Execution {
     return publisher instanceof ExecutionBoundPublisher ? (TransformablePublisher<T>) publisher : new ExecutionBoundPublisher<>(publisher, disposer);
   }
 
-  public static <T> Upstream<T> upstream(Upstream<T> upstream) {
-    return downstream ->
-      require().delimit(downstream::error, continuation -> {
-          AsyncDownstream<T> asyncDownstream = new AsyncDownstream<>(continuation, downstream);
-          try {
-            upstream.connect(asyncDownstream);
-          } catch (Throwable throwable) {
-            if (asyncDownstream.fire()) {
-              continuation.resume(() -> downstream.error(throwable));
-            } else {
-              LOGGER.error("", new OverlappingExecutionException("promise already fulfilled", throwable));
-            }
-          }
-        }
-      );
+  public static void throwError(Throwable throwable) {
+    require().delimit(Action.throwException(), h -> h.resume(Block.throwException(throwable)));
   }
 
   @Override
@@ -663,7 +650,7 @@ public class DefaultExecution implements Execution {
 
           private void addEvent(ExecStream parent, Block action) {
             events.add(new SingleEventExecStream(parent, Action.throwException(), continuation -> continuation.resume(action)));
-             drain();
+            drain();
           }
         })
       )));

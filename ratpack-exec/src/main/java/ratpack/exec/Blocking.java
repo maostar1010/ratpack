@@ -51,7 +51,7 @@ public abstract class Blocking {
    * @return a promise for the return value of the given blocking operation
    */
   public static <T> Promise<T> get(Factory<T> factory) {
-    return new DefaultPromise<>(downstream -> {
+    return DefaultPromise.of(downstream -> {
       DefaultExecution execution = DefaultExecution.require();
       EventLoop eventLoop = execution.getEventLoop();
       execution.delimit(downstream::error, continuation ->
