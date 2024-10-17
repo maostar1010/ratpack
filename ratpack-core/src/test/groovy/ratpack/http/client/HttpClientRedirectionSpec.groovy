@@ -156,6 +156,41 @@ class HttpClientRedirectionSpec extends BaseHttpClientSpec {
     pooled << [true, false]
   }
 
+  def "redirection preserves query param character encoding"() {
+    given:
+    bindings {
+      bindInstance(HttpClient, HttpClient.of { it.poolSize(pooled ? 8 : 0) })
+    }
+    otherApp {
+      get("foo") {
+        response.with {
+          status(301)
+          headers.set(HttpHeaderConstants.LOCATION, "/bar?loc=http://ratpack.io=10")
+          send()
+        }
+      }
+      get("bar") {
+        render request.queryParams["loc"]
+      }
+    }
+
+    when:
+    handlers {
+      get { HttpClient httpClient ->
+        httpClient.get(otherAppUrl("foo")) {
+        } then { ReceivedResponse response ->
+          render response.body.text
+        }
+      }
+    }
+
+    then:
+    text == "http://ratpack.io=10"
+
+    where:
+    pooled << [true, false]
+  }
+
   def "can follow a relative redirect get request with encoded query parameters"() {
     given:
     bindings {
@@ -190,6 +225,84 @@ class HttpClientRedirectionSpec extends BaseHttpClientSpec {
     where:
     pooled << [true, false]
   }
+
+  def "relative redirect preserves encoded path parameters"() {
+    given:
+    def valToken = ''
+    bindings {
+      bindInstance(HttpClient, HttpClient.of { it.poolSize(pooled ? 8 : 0) })
+    }
+    otherApp {
+      get("foo") {
+        response.with {
+          status(301)
+          headers.set(HttpHeaderConstants.LOCATION, "path/%2F%2F%3Abar")
+          send()
+        }
+      }
+      get("path/:val") {
+        render request.path
+        valToken = pathTokens.get("val")
+      }
+    }
+
+    when:
+    handlers {
+      get { HttpClient httpClient ->
+        httpClient.get(otherAppUrl("foo")) {
+        } then { ReceivedResponse response ->
+          render response.body.text
+        }
+      }
+    }
+
+    then:
+    text == "path/%2F%2F%3Abar"
+    valToken == '//:bar'
+
+    where:
+    pooled << [true, false]
+  }
+
+
+  def "relative redirect preserves unencoded path parameters"() {
+    given:
+    def valToken = ''
+    bindings {
+      bindInstance(HttpClient, HttpClient.of { it.poolSize(pooled ? 8 : 0) })
+    }
+    otherApp {
+      get("foo") {
+        response.with {
+          status(301)
+          headers.set(HttpHeaderConstants.LOCATION, "path///:bar")
+          send()
+        }
+      }
+      get("path///:val") {
+        render request.path
+        valToken = pathTokens.get("val")
+      }
+    }
+
+    when:
+    handlers {
+      get { HttpClient httpClient ->
+        httpClient.get(otherAppUrl("foo")) {
+        } then { ReceivedResponse response ->
+          render response.body.text
+        }
+      }
+    }
+
+    then:
+    text == "path///:bar"
+    valToken == ':bar'
+
+    where:
+    pooled << [true, false]
+  }
+
 
   def "can follow a relative redirect get request"() {
     given:

@@ -628,22 +628,32 @@ abstract class RequestActionSupport<T> implements Upstream<T> {
       if (redirectLocation.startsWith("//")) { // protocol relative
         return URI.create(requestUri.getScheme() + ":" + redirectLocation);
       } else {
-
-        String path = redirectLocationUri.getPath();
-        if (!path.startsWith("/")) { // absolute path
-          path = getParentPath(requestUri.getPath()) + path;
-        }
-        return new URI(
-          requestUri.getScheme(),
-          requestUri.getUserInfo(),
-          requestUri.getHost(),
-          requestUri.getPort(),
-          path,
-          redirectLocationUri.getQuery(),
-          null
-        );
+        return absolutizeRelativeRedirect(requestUri, redirectLocationUri);
       }
     }
+  }
+
+  private static URI absolutizeRelativeRedirect(URI request, URI redirect) throws URISyntaxException {
+    URI base = new URI(
+        request.getScheme(),
+        request.getUserInfo(),
+        request.getHost(),
+        request.getPort(),
+        null,
+        null,
+        null
+    );
+
+    String path = redirect.getRawPath();
+    if (!path.startsWith("/")) { // absolute path
+      path = getParentPath(request.getRawPath()) + path;
+    }
+
+    String query = redirect.getRawQuery() == null
+        ? ""
+        : "?" + redirect.getRawQuery();
+
+    return URI.create(base.toASCIIString() + path + query);
   }
 
   private static String getParentPath(String path) {
