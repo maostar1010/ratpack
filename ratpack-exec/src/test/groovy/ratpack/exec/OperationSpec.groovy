@@ -68,6 +68,58 @@ class OperationSpec extends BaseRatpackSpec {
     events == [1]
   }
 
+  def "can wiretap successful operation"() {
+    when:
+    exec.execute {
+      Operation.of { 1 }
+        .wiretap { events << it }
+    }
+
+    then:
+    events[0] == Optional.empty()
+  }
+
+  def "can wiretap failed operation"() {
+    when:
+    exec.execute {
+      Operation.error(new RuntimeException())
+        .wiretap { events << it }
+    }
+
+    then:
+    (events[0] as Optional<Throwable>).get() instanceof RuntimeException
+  }
+
+  def "wiretap of successful operation can fail"() {
+    when:
+    exec.execute {
+      Operation.of { 1 }
+        .wiretap {
+          throw new RuntimeException("!")
+        }
+    }
+
+    then:
+    def e = thrown(RuntimeException)
+    e.message == "!"
+    e.suppressed.length == 0
+  }
+
+  def "wiretap of failed operation can fail"() {
+    when:
+    exec.execute {
+      Operation.error(new RuntimeException())
+        .wiretap {
+          throw new RuntimeException("!")
+        }
+    }
+
+    then:
+    def e = thrown(RuntimeException)
+    e.message == "!"
+    e.suppressed.length == 0
+  }
+
   private <T> Promise<T> async(T t) {
     Promise.async { f -> Thread.start { f.success(t) } }
   }
