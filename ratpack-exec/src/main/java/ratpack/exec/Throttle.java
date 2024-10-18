@@ -59,6 +59,15 @@ public interface Throttle {
   <T> Promise<T> throttle(Promise<T> promise);
 
   /**
+   * Throttles the given operation.
+   *
+   * @param operation the operation to throttle
+   * @return the throttled operation
+   * @since 1.10
+   */
+  Operation throttle(Operation operation);
+
+  /**
    * The size of this throttle.
    * <p>
    * The throttle guarantees that no more than this number of promises that were throttled via {@link #throttle(Promise)} will execute at the same time.
