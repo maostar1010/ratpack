@@ -170,6 +170,203 @@ public interface Operation extends Upstream<Void> {
     );
   }
 
+  /**
+   * Registers a listener that is invoked when the operation is initiated.
+   *
+   * @param onYield the action to take when the operation is initiated
+   * @return the operation
+   * @since 1.10
+   */
+  default Operation onYield(Runnable onYield) {
+    return transform(up -> down -> {
+      try {
+        onYield.run();
+      } catch (Throwable e) {
+        down.error(e);
+        return;
+      }
+      up.connect(down);
+    });
+  }
+
+  /**
+   * Facilitates intercepting an operation before and after.
+   *
+   * @param before the before listener
+   * @param after the after listener
+   * @return an operation
+   * @since 1.10
+   */
+  default Operation around(Runnable before, Function<? super ExecResult<Void>, ? extends ExecResult<Void>> after) {
+    return transform(up -> down -> {
+      try {
+        before.run();
+      } catch (Throwable e) {
+        down.error(e);
+        return;
+      }
+
+      up.connect(new Downstream<Void>() {
+        private void onResult(ExecResult<Void> originalResult) {
+          ExecResult<Void> newResult;
+          try {
+            newResult = after.apply(originalResult);
+          } catch (Throwable t) {
+            down.error(t);
+            return;
+          }
+
+          down.accept(newResult);
+        }
+
+        @Override
+        public void success(Void value) {
+          onResult(ExecResult.of(Result.success(value)));
+        }
+
+        @Override
+        public void error(Throwable throwable) {
+          onResult(ExecResult.of(Result.error(throwable)));
+        }
+
+        @Override
+        public void complete() {
+          onResult(ExecResult.complete());
+        }
+      });
+    });
+  }
+
+  /**
+   * Facilitates executing something before a promise is yielded and after it has completed.
+   *
+   * @param before the before block
+   * @param after the after block
+   * @return an operation
+   * @since 1.10
+   */
+  default Operation around(Block before, Block after) {
+    return transform(up -> down -> {
+      try {
+        before.execute();
+      } catch (Throwable e) {
+        down.error(e);
+        return;
+      }
+
+      up.connect(new Downstream<Void>() {
+        @Override
+        public void success(Void value) {
+          try {
+            after.execute();
+          } catch (Exception e) {
+            down.error(e);
+            return;
+          }
+          down.success(value);
+        }
+
+        @Override
+        public void error(Throwable throwable) {
+          try {
+            after.execute();
+          } catch (Exception e) {
+            if (e != throwable) {
+              throwable.addSuppressed(e);
+            }
+          }
+          down.error(throwable);
+        }
+
+        @Override
+        public void complete() {
+          try {
+            after.execute();
+          } catch (Exception e) {
+            down.error(e);
+            return;
+          }
+          down.complete();
+        }
+      });
+    });
+  }
+
+  /**
+   * Throttles the operation using the given {@link Throttle throttle}.
+   * <p>
+   * Throttling can be used to limit concurrency.
+   * Typically, to limit concurrent use of an external resource, such as a HTTP API.
+   *
+   * @param throttle the particular throttle to use to throttle the operation
+   * @return the throttled operation
+   * @since 1.10
+   */
+  default Operation throttled(Throttle throttle) {
+    return throttle.throttle(this);
+  }
+
+  /**
+   * Consume the operation as a {@link Result}.
+   *
+   * @param resultHandler the consumer of the result
+   * @since 1.10
+   */
+  default void result(Action<? super ExecResult<Void>> resultHandler) {
+    connect(new Downstream<Void>() {
+      @Override
+      public void success(Void value) {
+        try {
+          resultHandler.execute(ExecResult.of(Result.success(value)));
+        } catch (Throwable e) {
+          DefaultExecution.throwError(e);
+        }
+      }
+
+      @Override
+      public void error(Throwable throwable) {
+        try {
+          resultHandler.execute(ExecResult.of(Result.error(throwable)));
+        } catch (Throwable e) {
+          DefaultExecution.throwError(e);
+        }
+      }
+
+      @Override
+      public void complete() {
+        try {
+          resultHandler.execute(ExecResult.complete());
+        } catch (Throwable e) {
+          DefaultExecution.throwError(e);
+        }
+      }
+    });
+  }
+
+  /**
+   * Create a promise for an exec result of this promise.
+   *
+   * @since 1.10
+   */
+  default Promise<ExecResult<Void>> result() {
+    return Promise.async(down -> connect(new Downstream<Void>() {
+      @Override
+      public void success(Void value) {
+        down.success(ExecResult.of(Result.success(value)));
+      }
+
+      @Override
+      public void error(Throwable throwable) {
+        down.success(ExecResult.of(Result.error(throwable)));
+      }
+
+      @Override
+      public void complete() {
+        down.success(ExecResult.complete());
+      }
+    }));
+  }
+
   void then(Block block);
 
   default void then() {

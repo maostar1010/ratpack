@@ -16,9 +16,7 @@
 
 package ratpack.exec.internal;
 
-import ratpack.exec.Downstream;
-import ratpack.exec.Promise;
-import ratpack.exec.Throttle;
+import ratpack.exec.*;
 
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -41,41 +39,51 @@ public class DefaultThrottle implements Throttle {
 
   @Override
   public <T> Promise<T> throttle(Promise<T> promise) {
-    return promise.<T>transform(up -> down -> {
+    return promise.transform(this::wrap);
+  }
+
+  @Override
+  public Operation throttle(Operation operation) {
+    return operation.transform(this::wrap);
+  }
+
+  private <T> Upstream<T> wrap(Upstream<? extends T> up) {
+    return down -> {
+      Downstream<? super T> wrappedDown = wrap(down);
       waiting.incrementAndGet();
       if (active.getAndIncrement() < size) {
         waiting.decrementAndGet();
-        up.connect(down);
+        up.connect(wrappedDown);
       } else {
         active.decrementAndGet();
-        Promise.<Downstream<? super T>>async(innerDown -> {
-          queue.add(() -> innerDown.success(down));
+        DefaultExecution.require().delimit(wrappedDown::error, continuation -> {
+          queue.add(() -> continuation.resume(() -> up.connect(wrappedDown)));
           drain();
-        })
-          .then(up::connect);
+        });
       }
-    })
-      .transform(up -> down ->
-        up.connect(new Downstream<T>() {
-          @Override
-          public void success(T value) {
-            post();
-            down.success(value);
-          }
+    };
+  }
 
-          @Override
-          public void error(Throwable throwable) {
-            post();
-            down.error(throwable);
-          }
+  private <T> Downstream<T> wrap(Downstream<T> down) {
+    return new Downstream<T>() {
+      @Override
+      public void success(T value) {
+        post();
+        down.success(value);
+      }
 
-          @Override
-          public void complete() {
-            post();
-            down.complete();
-          }
-        })
-      );
+      @Override
+      public void error(Throwable throwable) {
+        post();
+        down.error(throwable);
+      }
+
+      @Override
+      public void complete() {
+        post();
+        down.complete();
+      }
+    };
   }
 
   private void post() {

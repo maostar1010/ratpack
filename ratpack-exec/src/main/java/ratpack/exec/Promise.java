@@ -459,7 +459,7 @@ public interface Promise<T> extends Upstream<T> {
       @Override
       public void error(Throwable throwable) {
         try {
-          resultHandler.execute(ExecResult.of(Result.<T>error(throwable)));
+          resultHandler.execute(ExecResult.of(Result.error(throwable)));
         } catch (Throwable e) {
           DefaultExecution.throwError(e);
         }
@@ -468,12 +468,36 @@ public interface Promise<T> extends Upstream<T> {
       @Override
       public void complete() {
         try {
-          resultHandler.execute(ExecResult.<T>complete());
+          resultHandler.execute(ExecResult.complete());
         } catch (Throwable e) {
           DefaultExecution.throwError(e);
         }
       }
     });
+  }
+
+  /**
+   * Create a promise for an exec result of this promise.
+   *
+   * @since 1.10
+   */
+  default Promise<ExecResult<T>> result() {
+    return transform(up -> down -> up.connect(new Downstream<T>() {
+      @Override
+      public void success(T value) {
+        down.success(ExecResult.of(Result.success(value)));
+      }
+
+      @Override
+      public void error(Throwable throwable) {
+        down.success(ExecResult.of(Result.error(throwable)));
+      }
+
+      @Override
+      public void complete() {
+        down.success(ExecResult.complete());
+      }
+    }));
   }
 
   /**
@@ -2108,7 +2132,7 @@ public interface Promise<T> extends Upstream<T> {
   }
 
   /**
-   * Facilitates capturing a value before the the promise is subscribed and using it to later augment the result.
+   * Facilitates capturing a value before the promise is subscribed and using it to later augment the result.
    * <p>
    * The {@code before} factory is invoked as the promise is subscribed.
    * As the promise result becomes available, it and the result are given to the {@code after} function.
@@ -2157,6 +2181,61 @@ public interface Promise<T> extends Upstream<T> {
         @Override
         public void complete() {
           onResult(ExecResult.complete());
+        }
+      });
+    });
+  }
+
+  /**
+   * Facilitates executing something before a promise is yielded and after it has completed.
+   *
+   * @param before the before block
+   * @param after the after block
+   * @return an operation
+   * @since 1.10
+   */
+  default Promise<T> around(Block before, Block after) {
+    return transform(up -> down -> {
+      try {
+        before.execute();
+      } catch (Throwable e) {
+        down.error(e);
+        return;
+      }
+
+      up.connect(new Downstream<T>() {
+        @Override
+        public void success(T value) {
+          try {
+            after.execute();
+          } catch (Exception e) {
+            down.error(e);
+            return;
+          }
+          down.success(value);
+        }
+
+        @Override
+        public void error(Throwable throwable) {
+          try {
+            after.execute();
+          } catch (Exception e) {
+            if (e != throwable) {
+              throwable.addSuppressed(e);
+            }
+          }
+          down.error(throwable);
+        }
+
+        @Override
+        public void complete() {
+          try {
+            after.execute();
+          } catch (Exception e) {
+            down.error(e);
+            return;
+          }
+          down.complete();
         }
       });
     });

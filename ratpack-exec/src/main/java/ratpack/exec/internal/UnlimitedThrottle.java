@@ -16,6 +16,7 @@
 
 package ratpack.exec.internal;
 
+import ratpack.exec.Operation;
 import ratpack.exec.Promise;
 import ratpack.exec.Throttle;
 
@@ -27,7 +28,12 @@ public class UnlimitedThrottle implements Throttle {
 
   @Override
   public <T> Promise<T> throttle(Promise<T> promise) {
-    return promise.onYield(active::incrementAndGet).wiretap(r -> active.decrementAndGet());
+    return promise.around(active::incrementAndGet, active::decrementAndGet);
+  }
+
+  @Override
+  public Operation throttle(Operation operation) {
+    return operation.around(active::incrementAndGet, active::decrementAndGet);
   }
 
   @Override
