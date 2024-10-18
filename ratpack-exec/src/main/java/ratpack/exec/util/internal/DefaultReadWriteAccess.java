@@ -18,6 +18,7 @@ package ratpack.exec.util.internal;
 
 import io.netty.util.concurrent.ScheduledFuture;
 import ratpack.exec.Downstream;
+import ratpack.exec.Operation;
 import ratpack.exec.Promise;
 import ratpack.exec.Upstream;
 import ratpack.exec.internal.Continuation;
@@ -73,22 +74,42 @@ public class DefaultReadWriteAccess implements ReadWriteAccess {
 
   @Override
   public <T> Promise<T> read(Promise<T> promise) {
-    return promise.transform(up -> down -> new Access<T>(true, up, defaultTimeout, down));
+    return promise.transform(up -> down -> new Access<>(true, up, defaultTimeout, down));
   }
 
   @Override
   public <T> Promise<T> read(Promise<T> promise, Duration timeout) {
-    return promise.transform(up -> down -> new Access<T>(true, up, timeout, down));
+    return promise.transform(up -> down -> new Access<>(true, up, timeout, down));
   }
 
   @Override
   public <T> Promise<T> write(Promise<T> promise) {
-    return promise.transform(up -> down -> new Access<T>(false, up, defaultTimeout, down));
+    return promise.transform(up -> down -> new Access<>(false, up, defaultTimeout, down));
   }
 
   @Override
   public <T> Promise<T> write(Promise<T> promise, Duration timeout) {
-    return promise.transform(up -> down -> new Access<T>(false, up, timeout, down));
+    return promise.transform(up -> down -> new Access<>(false, up, timeout, down));
+  }
+
+  @Override
+  public Operation read(Operation operation) {
+    return operation.transform(up -> down -> new Access<>(true, up, defaultTimeout, down));
+  }
+
+  @Override
+  public Operation read(Operation operation, Duration timeout) {
+    return operation.transform(up -> down -> new Access<>(true, up, timeout, down));
+  }
+
+  @Override
+  public Operation write(Operation operation) {
+    return operation.transform(up -> down -> new Access<>(false, up, defaultTimeout, down));
+  }
+
+  @Override
+  public Operation write(Operation operation, Duration timeout) {
+    return operation.transform(up -> down -> new Access<>(false, up, timeout, down));
   }
 
   private class Access<T> {
