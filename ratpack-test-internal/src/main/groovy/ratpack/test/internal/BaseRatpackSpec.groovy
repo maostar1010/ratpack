@@ -36,4 +36,6 @@ abstract class BaseRatpackSpec extends Specification {
   @Rule
   LeakDetection leakDetection
 
+  public SpinAssert spinAssert = new SpinAssert()
+
 }
