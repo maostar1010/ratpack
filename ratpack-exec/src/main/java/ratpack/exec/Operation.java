@@ -110,6 +110,17 @@ public interface Operation extends Upstream<Void> {
     });
   }
 
+  /**
+   * Create an operation that fails with the given throwable
+   *
+   * @param error the error
+   * @return an operation
+   * @since 1.10
+   */
+  static Operation error(Throwable error) {
+    return DefaultOperation.of(down -> down.error(error));
+  }
+
   default Operation onError(Action<? super Throwable> onError) {
     return onError(Predicate.TRUE, onError);
   }
@@ -235,32 +246,40 @@ public interface Operation extends Upstream<Void> {
     return function.apply(this);
   }
 
-  default Operation wiretap(Action<? super Optional<? extends Throwable>> action) {
-    return transform(up -> down ->
-      up.connect(new Downstream<Void>() {
-        @Override
-        public void success(Void value) {
-          try {
-            action.execute(Optional.empty());
-          } catch (Throwable t) {
-            down.error(t);
-          }
-        }
+  /**
+   * Listens for the operation outcome.
+   *
+   * @param result an empty optional if the operation succeeds, or an optional of the operation error.
+   * @return an operation
+   * @since 1.6
+   */
+  default Operation wiretap(Action<? super Optional<? extends Throwable>> result) {
+    return transform(up -> down -> up.connect(new Downstream<Void>() {
+      @Override
+      public void success(Void value) {
+        notify(Optional.empty());
+      }
 
-        @Override
-        public void error(Throwable throwable) {
-          try {
-            action.execute(Optional.of(throwable));
-          } catch (Throwable t) {
-            down.error(t);
-          }
-        }
+      @Override
+      public void error(Throwable throwable) {
+        notify(Optional.of(throwable));
+      }
 
-        @Override
-        public void complete() {
-          down.complete();
+      private void notify(@SuppressWarnings("OptionalUsedAsFieldOrParameterType") Optional<Throwable> signal) {
+        try {
+          result.execute(signal);
+        } catch (Throwable t) {
+          down.error(t);
+          return;
         }
-      }));
+        down.success(null);
+      }
+
+      @Override
+      public void complete() {
+        down.complete();
+      }
+    }));
   }
 
   Operation transform(Function<? super Upstream<Void>, ? extends Upstream<Void>> upstreamTransformer);
