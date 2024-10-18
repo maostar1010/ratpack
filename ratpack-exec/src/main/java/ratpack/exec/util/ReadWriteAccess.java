@@ -16,6 +16,7 @@
 
 package ratpack.exec.util;
 
+import ratpack.exec.Operation;
 import ratpack.exec.Promise;
 import ratpack.exec.util.internal.DefaultReadWriteAccess;
 
@@ -135,6 +136,16 @@ public interface ReadWriteAccess {
   }
 
   /**
+   * Create a new read/write access object with an infinite default timeout.
+   *
+   * @return a new read/write access object
+   * @since 1.10
+   */
+  static ReadWriteAccess create() {
+    return create(Duration.ZERO);
+  }
+
+  /**
    * The default timeout value.
    *
    * @return the default timeout value
@@ -144,8 +155,8 @@ public interface ReadWriteAccess {
   /**
    * Decorates the given promise with read serialization.
    * <p>
-   * Read serialized promises may execute concurrently with other read serialized promises,
-   * but not with write serialized promises.
+   * Read serialized promises may execute concurrently with other read serialized operations/promises,
+   * but not with write serialized operations/promises.
    * <p>
    * If access is not granted within the default timeout, the promise will wail with {@link TimeoutException}.
    *
@@ -158,8 +169,8 @@ public interface ReadWriteAccess {
   /**
    * Decorates the given promise with read serialization and the given timeout.
    * <p>
-   * Read serialized promises may execute concurrently with other read serialized promises,
-   * but not with write serialized promises.
+   * Read serialized promises may execute concurrently with other read serialized operations/promises,
+   * but not with write serialized operations/promises.
    * <p>
    * If access is not granted within the given timeout, the promise will wail with {@link TimeoutException}.
    *
@@ -173,7 +184,7 @@ public interface ReadWriteAccess {
   /**
    * Decorates the given promise with write serialization.
    * <p>
-   * Write serialized promises may not execute concurrently with read or write serialized promises.
+   * Write serialized promises may not execute concurrently with read or write serialized operations/promises.
    * <p>
    * If access is not granted within the default timeout, the promise will wail with {@link TimeoutException}.
    *
@@ -186,7 +197,7 @@ public interface ReadWriteAccess {
   /**
    * Decorates the given promise with write serialization.
    * <p>
-   * Write serialized promises may not execute concurrently with read or write serialized promises.
+   * Write serialized promises may not execute concurrently with read or write serialized operations/promises.
    * <p>
    * If access is not granted within the given timeout, the promise will wail with {@link TimeoutException}.
    *
@@ -196,6 +207,62 @@ public interface ReadWriteAccess {
    * @return a decorated promise
    */
   <T> Promise<T> write(Promise<T> promise, Duration timeout);
+
+  /**
+   * Decorates the given operation with read serialization.
+   * <p>
+   * Read serialized operation may execute concurrently with other read serialized operations/promises,
+   * but not with write serialized operations/promises.
+   * <p>
+   * If access is not granted within the default timeout, the operation will wail with {@link TimeoutException}.
+   *
+   * @param operation the operation to decorate
+   * @return a decorated operation
+   * @since 1.10
+   */
+  Operation read(Operation operation);
+
+  /**
+   * Decorates the given operation with read serialization and the given timeout.
+   * <p>
+   * Read serialized operations may execute concurrently with other read serialized operations/promises,
+   * but not with write serialized operations/promises.
+   * <p>
+   * If access is not granted within the given timeout, the operation will wail with {@link TimeoutException}.
+   *
+   * @param operation the operation to decorate
+   * @param timeout the maximum amount of time to wait for access (must not be negative, 0 == infinite)
+   * @return a decorated operation
+   * @since 1.10
+   */
+  Operation read(Operation operation, Duration timeout);
+
+  /**
+   * Decorates the given operation with write serialization.
+   * <p>
+   * Write serialized operation may not execute concurrently with read or write serialized operations/promises.
+   * <p>
+   * If access is not granted within the default timeout, the operation will wail with {@link TimeoutException}.
+   *
+   * @param operation the promise to decorate
+   * @return a decorated operation
+   * @since 1.10
+   */
+  Operation write(Operation operation);
+
+  /**
+   * Decorates the given operation with write serialization.
+   * <p>
+   * Write serialized operations may not execute concurrently with read or write serialized operations/promises.
+   * <p>
+   * If access is not granted within the given timeout, the operation will wail with {@link TimeoutException}.
+   *
+   * @param operation the operation to decorate
+   * @param timeout the maximum amount of time to wait for access (must not be negative, 0 == infinite)
+   * @return a decorated operation
+   * @since 1.10
+   */
+  Operation write(Operation operation, Duration timeout);
 
   /**
    * Thrown if access could not be acquired within the given timeout value.
