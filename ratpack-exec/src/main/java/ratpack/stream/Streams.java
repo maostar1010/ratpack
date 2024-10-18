@@ -34,6 +34,7 @@ import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
 
 /**
  * Some lightweight utilities for working with <a href="http://www.reactive-streams.org/">reactive streams</a>.
@@ -830,6 +831,20 @@ public class Streams {
    */
   public static <T> TransformablePublisher<T> flatten(Publisher<? extends Publisher<T>> publisher, Action<? super T> disposer) {
     return new FlattenPublisher<>(publisher, disposer);
+  }
+
+  /**
+   * Decorates the publisher to emit items from the {@code heartbeat} supplier if {@code timeout} expires after waiting for an item from {@code source}.
+   * <p>
+   * The returned publisher can only be consumed from an execution.
+   * <p>
+   * The source publisher will be subscribed to in a forked execution.
+   * It is subscribed to with an execution-bound subscriber, meaning that the publisher must emit all signals as part of an execution.
+   *
+   * @since 1.10
+   */
+  public static <T> TransformablePublisher<T> heartbeats(Publisher<T> source, Duration timeout, Consumer<? super T> disposer, Promise<? extends T> heartbeat) {
+    return new HeartbeatPublisher<>(source, heartbeat, timeout, disposer);
   }
 
 }

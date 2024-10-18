@@ -25,7 +25,9 @@ import ratpack.func.BiFunction;
 import ratpack.func.Function;
 import ratpack.func.Predicate;
 
+import java.time.Duration;
 import java.util.List;
+import java.util.function.Consumer;
 
 /**
  * A wrapper over a {@link Publisher} that makes it more convenient to chain transformations of different kinds.
@@ -286,6 +288,15 @@ public interface TransformablePublisher<T> extends Publisher<T> {
    */
   default TransformablePublisher<T> batch(int batchSize, Action<? super T> disposer) {
     return Streams.batch(batchSize, this, disposer);
+  }
+
+  /**
+   * See {@link Streams#heartbeats(Publisher, Duration, Consumer, Promise)}.
+   *
+   * @since 1.10
+   */
+  default TransformablePublisher<T> heartbeats(Duration timeout, Consumer<? super T> disposer, Promise<? extends T> heartbeat) {
+    return Streams.heartbeats(this, timeout, disposer, heartbeat);
   }
 
 }
