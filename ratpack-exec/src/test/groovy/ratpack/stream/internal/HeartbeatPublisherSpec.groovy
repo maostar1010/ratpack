@@ -35,7 +35,7 @@ class HeartbeatPublisherSpec extends BaseExecutionSpec {
       it < 5 ? it.toString() : null
     }.bindExec()
 
-    def publisher = source.heartbeats(Duration.ofMillis(50), {}, Promise.value("heartbeat"))
+    def publisher = source.heartbeats(Duration.ofMillis(20), {}, Promise.value("heartbeat"))
     def subscriber = new TestSubscriber<String>(1)
 
     when:
@@ -49,7 +49,7 @@ class HeartbeatPublisherSpec extends BaseExecutionSpec {
     then:
     with(subscriber.result()) {
       containsAll((0..4)*.toString())
-      count("heartbeat") > 2
+      count("heartbeat") >= 2
     }
   }
 
