@@ -87,7 +87,8 @@ class OperationSpec extends BaseRatpackSpec {
     }
 
     then:
-    (events[0] as Optional<Throwable>).get() instanceof RuntimeException
+    def e = thrown(RuntimeException)
+    (events[0] as Optional<Throwable>).get().is(e)
   }
 
   def "wiretap of successful operation can fail"() {
