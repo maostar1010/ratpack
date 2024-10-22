@@ -270,7 +270,7 @@ public interface Operation extends Upstream<Void> {
         public void success(Void value) {
           try {
             after.execute();
-          } catch (Exception e) {
+          } catch (Throwable e) {
             down.error(e);
             return;
           }
@@ -281,7 +281,7 @@ public interface Operation extends Upstream<Void> {
         public void error(Throwable throwable) {
           try {
             after.execute();
-          } catch (Exception e) {
+          } catch (Throwable e) {
             if (e != throwable) {
               throwable.addSuppressed(e);
             }
@@ -293,7 +293,7 @@ public interface Operation extends Upstream<Void> {
         public void complete() {
           try {
             after.execute();
-          } catch (Exception e) {
+          } catch (Throwable e) {
             down.error(e);
             return;
           }

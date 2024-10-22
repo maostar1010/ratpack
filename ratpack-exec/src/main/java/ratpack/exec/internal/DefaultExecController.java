@@ -118,7 +118,7 @@ public class DefaultExecController implements ExecController {
     onCloseQueue.forEach(onClose -> {
       try {
         onClose.execute();
-      } catch (Exception e) {
+      } catch (Throwable e) {
         LOGGER.warn("Exception thrown by exec controller onClose callback will be ignored - ", e);
       }
     });

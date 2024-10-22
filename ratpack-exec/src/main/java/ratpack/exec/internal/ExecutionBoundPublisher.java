@@ -51,7 +51,7 @@ public class ExecutionBoundPublisher<T> implements TransformablePublisher<T> {
           if (execution.isBound() && continuation.isEmpty()) {
             try {
               block.execute();
-            } catch (Exception e) {
+            } catch (Throwable e) {
               throw Exceptions.uncheck(e); // really should not happen
             }
           } else {
@@ -110,7 +110,7 @@ public class ExecutionBoundPublisher<T> implements TransformablePublisher<T> {
         private void dispose(T element) {
           try {
             disposer.execute(element);
-          } catch (Exception e) {
+          } catch (Throwable e) {
             DefaultExecution.LOGGER.warn("Exception raised disposing stream item will be ignored - ", e);
           }
         }

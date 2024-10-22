@@ -109,7 +109,7 @@ public interface Downstream<T> {
       public void error(Throwable throwable) {
         try {
           action.execute(throwable);
-        } catch (Exception e) {
+        } catch (Throwable e) {
           Downstream.this.error(e);
         }
       }
@@ -157,7 +157,7 @@ public interface Downstream<T> {
       public void complete() {
         try {
           block.execute();
-        } catch (Exception e) {
+        } catch (Throwable e) {
           Downstream.this.error(e);
         }
       }
@@ -264,7 +264,7 @@ public interface Downstream<T> {
       public void success(T value) {
         try {
           closeable.close();
-        } catch (Exception e) {
+        } catch (Throwable e) {
           Downstream.this.error(e);
           return;
         }
@@ -275,7 +275,7 @@ public interface Downstream<T> {
       public void error(Throwable throwable) {
         try {
           closeable.close();
-        } catch (Exception closerThrowable) {
+        } catch (Throwable closerThrowable) {
           throwable.addSuppressed(closerThrowable);
         }
         Downstream.this.error(throwable);
@@ -285,7 +285,7 @@ public interface Downstream<T> {
       public void complete() {
         try {
           closeable.close();
-        } catch (Exception e) {
+        } catch (Throwable e) {
           Downstream.this.error(e);
           return;
         }
