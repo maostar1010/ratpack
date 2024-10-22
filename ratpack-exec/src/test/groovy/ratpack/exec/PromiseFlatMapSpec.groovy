@@ -139,4 +139,27 @@ class PromiseFlatMapSpec extends BaseExecutionSpec {
     events == ["flatMap", "onError", "close", "complete"]
   }
 
+  def "flatmap with failed function return propagates error"() {
+    when:
+    exec {
+      Promise.value(1)
+        .flatMap { i ->
+          events << "flatMap"
+          Promise.flatten {
+            throw new Error("!")
+          }
+        }
+        .mapError {
+          events << it.message
+          "mapped"
+        }
+        .then { val ->
+          events << "then:$val"
+        }
+    }
+
+    then:
+    events == ["flatMap", "!", "then:mapped", "complete"]
+  }
+
 }

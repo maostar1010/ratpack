@@ -166,7 +166,7 @@ public interface Promise<T> extends Upstream<T> {
       Promise<T> promise;
       try {
         promise = factory.create();
-      } catch (Exception e) {
+      } catch (Throwable e) {
         down.error(e);
         return;
       }
@@ -187,7 +187,7 @@ public interface Promise<T> extends Upstream<T> {
   static <T> Promise<T> wrap(Factory<? extends Promise<T>> factory) {
     try {
       return factory.create();
-    } catch (Exception e) {
+    } catch (Throwable e) {
       return Promise.error(e);
     }
   }
@@ -1019,7 +1019,7 @@ public interface Promise<T> extends Upstream<T> {
         try {
           function.apply(value)
             .connect(downstream);
-        } catch (Exception e) {
+        } catch (Throwable e) {
           downstream.error(e);
         }
       }))
@@ -1912,7 +1912,7 @@ public interface Promise<T> extends Upstream<T> {
         public void success(T value) {
           try {
             listener.execute(Result.success(value));
-          } catch (Exception e) {
+          } catch (Throwable e) {
             down.error(e);
             return;
           }
@@ -1923,7 +1923,7 @@ public interface Promise<T> extends Upstream<T> {
         public void error(Throwable throwable) {
           try {
             listener.execute(Result.error(throwable));
-          } catch (Exception e) {
+          } catch (Throwable e) {
             down.error(e);
             return;
           }
@@ -2208,7 +2208,7 @@ public interface Promise<T> extends Upstream<T> {
         public void success(T value) {
           try {
             after.execute();
-          } catch (Exception e) {
+          } catch (Throwable e) {
             down.error(e);
             return;
           }
@@ -2219,7 +2219,7 @@ public interface Promise<T> extends Upstream<T> {
         public void error(Throwable throwable) {
           try {
             after.execute();
-          } catch (Exception e) {
+          } catch (Throwable e) {
             if (e != throwable) {
               throwable.addSuppressed(e);
             }
@@ -2231,7 +2231,7 @@ public interface Promise<T> extends Upstream<T> {
         public void complete() {
           try {
             after.execute();
-          } catch (Exception e) {
+          } catch (Throwable e) {
             down.error(e);
             return;
           }
