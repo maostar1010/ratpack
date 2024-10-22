@@ -38,6 +38,6 @@ public interface Upstream<T> {
    *
    * @param downstream the downstream to emit data to
    */
-  void connect(Downstream<? super T> downstream);
+  void connect(Downstream<? super T> downstream) throws Exception;
 
 }

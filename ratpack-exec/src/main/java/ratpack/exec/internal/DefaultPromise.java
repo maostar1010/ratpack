@@ -101,7 +101,7 @@ public class DefaultPromise<T> implements Promise<T> {
     }
   }
 
-  public static <T> void retryAttempt(int attemptNum, int maxAttempts, Upstream<? extends T> up, Downstream<? super T> down, BiFunction<? super Integer, ? super Throwable, Promise<Duration>> onError) {
+  public static <T> void retryAttempt(int attemptNum, int maxAttempts, Upstream<? extends T> up, Downstream<? super T> down, BiFunction<? super Integer, ? super Throwable, Promise<Duration>> onError) throws Exception {
     up.connect(down.onError(e -> {
       if (attemptNum > maxAttempts) {
         down.error(e);
@@ -136,7 +136,7 @@ public class DefaultPromise<T> implements Promise<T> {
     }));
   }
 
-  public static <T> void retry(Predicate<? super Throwable> predicate, RetryPolicy retryPolicy, Upstream<? extends T> up, Downstream<? super T> down, BiAction<? super Integer, ? super Throwable> onError) {
+  public static <T> void retry(Predicate<? super Throwable> predicate, RetryPolicy retryPolicy, Upstream<? extends T> up, Downstream<? super T> down, BiAction<? super Integer, ? super Throwable> onError) throws Exception {
     up.connect(down.onError(e -> {
       if (predicate.apply(e)) {
         if (retryPolicy.isExhausted()) {
