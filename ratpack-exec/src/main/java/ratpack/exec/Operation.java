@@ -439,6 +439,21 @@ public interface Operation extends Upstream<Void> {
     return next(Blocking.op(operation));
   }
 
+  /**
+   * Applies the given function to {@code this} and returns the result.
+   * <p>
+   * This method can be useful when needing to convert a promise to another type as it facilitates doing so without breaking the “code flow”.
+   * <p>
+   * The given function is executed immediately.
+   * <p>
+   * This method should only be used when converting an operation to another type.
+   * See {@link #apply(Function)} for applying custom operation operators.
+   *
+   * @param function the operation conversion function
+   * @return the output of the given function
+   * @throws Exception any thrown by the given function
+   * @since 1.6
+   */
   default <O> O to(Function<? super Operation, ? extends O> function) throws Exception {
     return function.apply(this);
   }
@@ -487,6 +502,21 @@ public interface Operation extends Upstream<Void> {
   Operation transform(Function<? super Upstream<Void>, ? extends Upstream<Void>> upstreamTransformer);
 
   /**
+   * Applies the custom transformation function to this operation.
+   *
+   * @param function the operation implementation
+   * @return the transformed operation
+   * @since 1.10
+   */
+  default Operation apply(Function<? super Operation, ? extends Operation> function) {
+    try {
+      return function.apply(this);
+    } catch (Throwable e) {
+      return Operation.error(e);
+    }
+  }
+
+  /**
    * A low level hook for consuming the promised value.
    * <p>
    * It is generally preferable to use {@link #then()} over this method.
@@ -524,6 +554,5 @@ public interface Operation extends Upstream<Void> {
   default Operation close(Operation closer) {
     return transform(up -> down -> up.connect(down.closing(closer)));
   }
-
 
 }

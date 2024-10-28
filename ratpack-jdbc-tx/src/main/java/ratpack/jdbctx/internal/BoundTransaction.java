@@ -17,7 +17,7 @@
 package ratpack.jdbctx.internal;
 
 import ratpack.exec.Operation;
-import ratpack.exec.Promise;
+import ratpack.exec.Upstream;
 import ratpack.func.Factory;
 import ratpack.jdbctx.Transaction;
 import ratpack.jdbctx.TransactionException;
@@ -85,13 +85,18 @@ public class BoundTransaction implements Transaction {
   }
 
   @Override
-  public <T> Promise<T> wrap(Promise<T> promise) {
-    return Promise.flatten(() -> get().wrap(promise));
-  }
+  public <T> Upstream<T> wrap(Upstream<? extends T> upstream) {
+    return down -> {
+      Transaction transaction;
+      try {
+        transaction = get();
+      } catch (Throwable e) {
+        down.error(e);
+        return;
+      }
 
-  @Override
-  public Operation wrap(Operation operation) {
-    return Operation.of(() -> get().wrap(operation).then());
+      transaction.wrap(upstream).connect(down);
+    };
   }
 
 }

@@ -19,6 +19,7 @@ package ratpack.jdbctx;
 import ratpack.exec.Execution;
 import ratpack.exec.Operation;
 import ratpack.exec.Promise;
+import ratpack.exec.Upstream;
 import ratpack.func.Factory;
 import ratpack.jdbctx.internal.BoundTransaction;
 import ratpack.jdbctx.internal.DefaultTransaction;
@@ -424,9 +425,24 @@ public interface Transaction {
 
   /**
    * Whether this transaction is auto-binding.
+   *
    * @return whether this transaction is auto-binding
    */
   boolean isAutoBind();
+
+  /**
+   * Decorates the given upstream in a transaction boundary.
+   * <p>
+   * The decoration effectively calls {@link #begin()} before connecting to the upstream.
+   * If it fails, {@link #rollback()} will be issued.
+   * If it succeeds, {@link #commit()} will be issued.
+   *
+   * @param upstream the upstream to connect to in a transaction
+   * @param <T> the type of upstream value
+   * @return an upstream that will yield within a transaction
+   * @since 1.5
+   */
+  <T> Upstream<T> wrap(Upstream<? extends T> upstream);
 
   /**
    * Decorates the given promise in a transaction boundary.
@@ -439,7 +455,9 @@ public interface Transaction {
    * @param <T> the type of promised value
    * @return a promise that will yield within a transaction
    */
-  <T> Promise<T> wrap(Promise<T> promise);
+  default <T> Promise<T> wrap(Promise<T> promise) {
+    return promise.transform(this::wrap);
+  }
 
   /**
    * Executes the given factory and yields the resultant promise in a transaction.
@@ -462,6 +480,8 @@ public interface Transaction {
    * @param operation the operation to yield in a transaction
    * @return a operation that will yield within a transaction
    */
-  Operation wrap(Operation operation);
+  default Operation wrap(Operation operation) {
+    return operation.transform(this::wrap);
+  }
 
 }
