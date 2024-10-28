@@ -19,7 +19,7 @@ package ratpack.jdbctx.internal;
 import ratpack.exec.Blocking;
 import ratpack.exec.Downstream;
 import ratpack.exec.Operation;
-import ratpack.exec.Promise;
+import ratpack.exec.Upstream;
 import ratpack.func.Action;
 import ratpack.func.Factory;
 import ratpack.jdbctx.Transaction;
@@ -48,12 +48,12 @@ public class DefaultTransaction implements Transaction {
   }
 
   @Override
-  public <T> Promise<T> wrap(Promise<T> promise) {
-    return promise.transform(up -> down ->
+  public <T> Upstream<T> wrap(Upstream<? extends T> upstream) {
+    return down ->
       begin()
         .onError(down::error)
         .then(() ->
-          up.connect(new Downstream<T>() {
+          upstream.connect(new Downstream<T>() {
             @Override
             public void success(T value) {
               commit()
@@ -78,13 +78,7 @@ public class DefaultTransaction implements Transaction {
                 .then(down::complete);
             }
           })
-        )
-    );
-  }
-
-  @Override
-  public Operation wrap(Operation operation) {
-    return wrap(operation.promise()).operation();
+        );
   }
 
   @Override
